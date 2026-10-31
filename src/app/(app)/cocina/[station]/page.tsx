@@ -40,7 +40,7 @@ export default function KDS({ params }: { params: Promise<{ station: string }> }
   const load = useCallback(async () => {
     if (!st) return;
     const { data } = await sb.from("kds_tickets")
-      .select("id, status, received_at, accepted_at, started_at, ready_at, orders(number, channel, customer_name, notes, dining_tables(number)), order_items(id, name, variant_label, qty, modifiers, notes, status)")
+      .select("id, status, received_at, accepted_at, started_at, ready_at, orders(number, channel, customer_name, notes, dining_tables!orders_table_id_fkey(number)), order_items(id, name, variant_label, qty, modifiers, notes, status)")
       .eq("station_id", st.id).in("status", ["received", "accepted", "preparing", "ready"]).order("received_at");
     setTickets((data ?? []) as unknown as Ticket[]);
   }, [sb, st]);

@@ -6,6 +6,7 @@ import type { Membership, Unit } from "./types";
 
 type Ctx = {
   loading: boolean;
+  error: string | null;
   email: string | null;
   memberships: Membership[];
   current: Membership | null;
@@ -23,6 +24,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const sb = supabaseBrowser();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -32,7 +34,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) { router.replace("/login"); return; }
     setEmail(user.email ?? null);
     const { data, error } = await sb.rpc("my_context");
-    if (error) { console.error(error); setLoading(false); return; }
+    if (error) { setError(error.message || "No fue posible conectar con el servidor"); setLoading(false); return; }
+    setError(null);
     const list = (data ?? []) as Membership[];
     setMemberships(list);
     let saved: string | null = null;
@@ -48,7 +51,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(() => {
     const perms = new Set(current?.permissions ?? []);
     return {
-      loading, email, memberships, current,
+      loading, error, email, memberships, current,
       businessId: current?.business.id ?? "",
       units: current?.units ?? [],
       unitByKind: (k) => current?.units.find((u) => u.kind === k),
@@ -56,7 +59,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       switchBusiness: (id) => { try { localStorage.setItem(KEY, id); } catch {} setSelected(id); },
       reload,
     };
-  }, [loading, email, memberships, current, reload]);
+  }, [loading, error, email, memberships, current, reload]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }

@@ -66,7 +66,7 @@ export function PaymentModal({ order, open, onClose, onDone, methods, sessions, 
         <button className="btn-secondary" onClick={onClose}>Cancelar</button>
         <button className="btn-primary" onClick={pay} disabled={busy}>{busy ? "Registrando…" : remaining > 0.5 ? `Registrar abono de ${money(sum)}` : "Confirmar pago"}</button>
       </>}>
-      <div className="grid gap-5 md:grid-cols-[1fr_260px]">
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_260px]">
         <div className="space-y-3">
           {lines.map((l, i) => {
             const m = methods.find((x) => x.id === l.method_id);

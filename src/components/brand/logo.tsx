@@ -18,7 +18,7 @@ export function Logo({ size = 40, tone = "dark", className, tagline }: { size?: 
       <div className="leading-none">
         <div className={clsx("font-display font-semibold tracking-[0.18em]", tone === "light" ? "text-ivory" : "text-charcoal")}
           style={{ fontSize: size * 0.5 }}>RUPÍCOLA</div>
-        {tagline && <div className={clsx("mt-1 text-[10px] tracking-[0.3em] uppercase", tone === "light" ? "text-sand" : "text-burgundy/80")}>
+        {tagline && <div className={clsx("mt-1 whitespace-nowrap text-[9px] tracking-[0.2em] uppercase", tone === "light" ? "text-sand" : "text-burgundy/80")}>
           Cocina · Bar · Café · Tienda</div>}
       </div>
     </div>

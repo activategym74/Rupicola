@@ -22,7 +22,7 @@ grant execute on function my_context() to authenticated;
 -- Buckets de Supabase Storage (solo existen en Supabase)
 do $$
 begin
-  if exists (select 1 from information_schema.schemata where schema_name = 'storage') then
+  if to_regclass('storage.buckets') is not null then
     insert into storage.buckets (id, name, public) values
       ('catalog', 'catalog', true),          -- fotos y modelos 3D de productos
       ('branding', 'branding', true),        -- logo

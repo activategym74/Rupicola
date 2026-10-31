@@ -60,7 +60,7 @@ function POS() {
   }, [sb, toast]);
 
   const loadOpen = useCallback(async () => {
-    const { data } = await sb.from("orders").select("id, number, total, channel, status, created_at, customer_name, dining_tables(number)")
+    const { data } = await sb.from("orders").select("id, number, total, channel, status, created_at, customer_name, dining_tables!orders_table_id_fkey(number)")
       .eq("business_id", businessId).eq("finalized", false).neq("status", "cancelled").order("created_at", { ascending: false }).limit(60);
     setOpenOrders((data ?? []) as unknown as OpenOrder[]);
   }, [sb, businessId]);
@@ -169,7 +169,7 @@ function POS() {
   const due = order ? Number(order.total) + Number(order.tip) - Number(order.paid_total) : 0;
 
   return (
-    <div className="-mx-4 -my-6 grid h-[calc(100vh-3.5rem)] grid-cols-1 overflow-hidden sm:-mx-6 lg:grid-cols-[1fr_400px]">
+    <div className="-mx-4 -my-6 grid h-[calc(100vh-3.5rem)] grid-cols-1 overflow-hidden sm:-mx-6 lg:grid-cols-[minmax(0,1fr)_400px]">
       {/* Catálogo */}
       <section className="flex min-h-0 flex-col border-r border-stone-line">
         <div className="space-y-3 border-b border-stone-line bg-white/60 p-4">

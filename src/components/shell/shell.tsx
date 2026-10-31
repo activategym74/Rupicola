@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LogOut, Menu, X, ChevronsUpDown } from "lucide-react";
 import clsx from "clsx";
 import { useApp } from "@/lib/app-context";
@@ -12,15 +12,26 @@ import { PageLoader } from "@/components/ui/bits";
 import { NotificationBell } from "./notifications";
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { loading, current, memberships, switchBusiness, can, email, businessId } = useApp();
+  const { loading, error, reload, current, memberships, switchBusiness, can, email, businessId } = useApp();
   const path = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
   if (loading) return <div className="flex h-screen items-center justify-center"><LogoMark size={56} className="animate-pulse" /></div>;
+  if (error) return (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+      <LogoMark size={56} /><p className="max-w-sm text-sm text-charcoal/70">No fue posible cargar su información: {error}</p>
+      <button className="btn-primary" onClick={() => reload()}>Reintentar</button>
+    </div>
+  );
   if (!current) return <PageLoader />;
 
   const allowed = (perm: string | string[]) => (Array.isArray(perm) ? perm.some(can) : can(perm));
+  // Protección de rutas: un usuario solo abre los módulos que su rol permite
+  const items = NAV.flatMap((s) => s.items);
+  const route = items.find((i) => path === i.href || path.startsWith(i.href + "/"));
+  const blocked = !!route && !allowed(route.perm);
+  const home = items.find((i) => allowed(i.perm))?.href ?? null;
   const logout = async () => {
     await supabaseBrowser().rpc("log_activity", { b: businessId, p_action: "logout" });
     await supabaseBrowser().auth.signOut();
@@ -86,8 +97,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex-1 truncate text-sm text-charcoal/60">{current.business.name}</div>
           <NotificationBell />
         </header>
-        <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6">{blocked ? <NoAccess home={home} silent={path === "/dashboard"} /> : children}</main>
       </div>
+    </div>
+  );
+}
+
+function NoAccess({ home, silent }: { home: string | null; silent: boolean }) {
+  const router = useRouter();
+  useEffect(() => { if (silent && home) router.replace(home); }, [silent, home, router]);
+  if (silent && home) return <PageLoader />;
+  return (
+    <div className="flex flex-col items-center gap-3 py-24 text-center">
+      <p className="font-display text-2xl">Sin acceso a este módulo</p>
+      <p className="max-w-sm text-sm text-charcoal/60">Su rol no tiene permiso para esta sección. Si lo necesita, pídalo al administrador.</p>
+      {home && <Link href={home} className="btn-primary">Ir a mi inicio</Link>}
     </div>
   );
 }

@@ -10,4 +10,4 @@ export type Order = {
   created_at: string; paid_at: string | null; notes: string | null;
   order_items: OrderItem[]; payments: Payment[]; dining_tables: { number: number } | null;
 };
-export const ORDER_SELECT = "*, order_items(*), payments(*, payment_methods(name)), dining_tables(number)";
+export const ORDER_SELECT = "*, order_items(*), payments(*, payment_methods(name)), dining_tables!orders_table_id_fkey(number)";

@@ -24,7 +24,7 @@ export default function SetupPage() {
     <AuthFrame title="Configuración inicial" subtitle="Cree el establecimiento. Podrá ajustar todo después en Configuración.">
       <form onSubmit={submit} className="space-y-4">
         <div><label className="label">Nombre del establecimiento</label><input name="name" defaultValue="RUPÍCOLA" required className="input" /></div>
-        <div><label className="label">Identificador para enlaces públicos</label><input name="slug" defaultValue="rupicola" pattern="[a-z0-9-]{3,40}" required className="input" />
+        <div><label className="label">Identificador para enlaces públicos</label><input name="slug" defaultValue="rupicola" pattern="[a-z0-9\-]{3,40}" required className="input" />
           <p className="mt-1 text-xs text-charcoal/50">Su tienda quedará en /tienda/<b>identificador</b></p></div>
         <div><label className="label">Su nombre</label><input name="admin" required className="input" /></div>
         {error && <p className="text-sm text-red-700">{error}</p>}
