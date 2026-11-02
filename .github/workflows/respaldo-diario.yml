@@ -1,0 +1,77 @@
+# Respaldo diario gratuito de la base de datos de Supabase.
+# - Copia roles, estructura y datos (incluye usuarios de Auth).
+# - Cifra el respaldo con BACKUP_PASSPHRASE (AES-256) antes de guardarlo.
+# - Guarda el archivo cifrado como "artifact" de GitHub durante 30 días.
+# - Hace una consulta al proyecto para que el plan gratis no lo pause por inactividad.
+#
+# Secretos requeridos (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL     Cadena de conexión "Session pooler" de Supabase, con la contraseña.
+#   BACKUP_PASSPHRASE   Clave para cifrar y descifrar los respaldos. Guárdela en un lugar seguro.
+# Cómo restaurar: docs/RESPALDOS.md
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # 3:00 a. m. hora de Colombia
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respaldo-diario
+  cancel-in-progress: false
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      # La URL y la llave anónima son públicas por diseño (las usa el navegador).
+      SUPABASE_URL: https://lhfexmhijbgohemaxapw.supabase.co
+      SUPABASE_ANON_KEY: sb_publishable_T-QhB5JxSyQQUcmUXPZrHA_AyCndVJo
+    steps:
+      - name: Verificar secretos
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Faltan los secretos SUPABASE_DB_URL y/o BACKUP_PASSPHRASE. Vea docs/RESPALDOS.md"
+            exit 1
+          fi
+
+      - name: Mantener activo el proyecto
+        run: |
+          curl -fsS -X POST "$SUPABASE_URL/rest/v1/rpc/public_menu" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" \
+            -d '{"p_slug":"rupicola"}' -o /dev/null -w "Supabase respondió %{http_code}\n"
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Copiar base de datos
+        run: |
+          mkdir respaldo
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f respaldo/roles.sql --role-only
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f respaldo/schema.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f respaldo/data.sql --data-only --use-copy
+          ls -la respaldo
+          for f in roles schema data; do test -s "respaldo/$f.sql" || { echo "::error::$f.sql quedó vacío"; exit 1; }; done
+
+      - name: Comprimir y cifrar
+        run: |
+          NOMBRE="rupicola-respaldo-$(TZ=America/Bogota date +%Y-%m-%d)"
+          echo "NOMBRE=$NOMBRE" >> "$GITHUB_ENV"
+          tar -czf "$NOMBRE.tar.gz" respaldo
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 -o "$NOMBRE.tar.gz.gpg" "$NOMBRE.tar.gz"
+          rm -rf respaldo "$NOMBRE.tar.gz"
+          ls -la "$NOMBRE.tar.gz.gpg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NOMBRE }}
+          path: ${{ env.NOMBRE }}.tar.gz.gpg
+          retention-days: 30
+          if-no-files-found: error
