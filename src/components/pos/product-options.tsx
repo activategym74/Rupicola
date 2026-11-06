@@ -17,6 +17,7 @@ export function ProductOptions({ product, open, onClose, onAdd, showStock = true
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const variants = (product?.product_variants ?? []).filter((v) => v.active);
+  const stockOn = showStock && product?.track_stock !== false;
   const groups = [...(product?.modifier_groups ?? [])].sort((a, b) => a.sort - b.sort);
   const allOptions = groups.flatMap((g) => g.modifier_options ?? []);
   const variant = variants.find((v) => v.id === variantId);
@@ -27,7 +28,7 @@ export function ProductOptions({ product, open, onClose, onAdd, showStock = true
     return n < g.min_select || n > g.max_select;
   });
   const needsVariant = product?.stock_mode === "variant" && !variant;
-  const stockError = variant && showStock && Number(variant.stock) < qty;
+  const stockError = variant && stockOn && Number(variant.stock) < qty;
 
   const reset = () => { setVariantId(""); setOpts([]); setQty(1); setNotes(""); };
   const close = () => { reset(); onClose(); };
@@ -49,11 +50,11 @@ export function ProductOptions({ product, open, onClose, onAdd, showStock = true
           <div className="label">Variante</div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {variants.map((v) => (
-              <button key={v.id} type="button" disabled={showStock && Number(v.stock) <= 0} onClick={() => setVariantId(v.id)}
+              <button key={v.id} type="button" disabled={stockOn && Number(v.stock) <= 0} onClick={() => setVariantId(v.id)}
                 className={clsx("rounded-xl border px-3 py-2 text-left text-sm transition disabled:opacity-40",
                   variantId === v.id ? "border-burgundy bg-burgundy-50" : "border-stone-line hover:border-sand")}>
                 <div className="font-medium">{variantLabel(v) || "Única"}</div>
-                <div className="text-xs text-charcoal/60">{money(v.price ?? product.price)}{showStock && ` · ${Number(v.stock)} disp.`}</div>
+                <div className="text-xs text-charcoal/60">{money(v.price ?? product.price)}{stockOn && ` · ${Number(v.stock)} disp.`}</div>
               </button>
             ))}
           </div>

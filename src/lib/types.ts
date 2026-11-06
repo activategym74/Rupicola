@@ -15,7 +15,7 @@ export type Product = {
   id: string; business_unit_id: string; category_id: string; station_id: string | null; sku: string | null; barcode: string | null;
   name: string; description: string | null; ingredients_text: string | null; price: number; tax_rate: number;
   image_url: string | null; model_3d_url: string | null; is_featured: boolean; is_recommended: boolean; is_available: boolean;
-  stock_mode: "recipe" | "variant" | "none"; sort: number; active: boolean;
+  stock_mode: "recipe" | "variant" | "none"; sort: number; active: boolean; track_stock?: boolean;
   product_variants?: Variant[]; modifier_groups?: ModifierGroup[];
 };
 export type CartLine = {

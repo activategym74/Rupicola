@@ -27,7 +27,7 @@ function POS() {
   const router = useRouter();
   const params = useSearchParams();
   const toast = useToast();
-  const { businessId, units, can, current } = useApp();
+  const { businessId, units, can, current, unitName } = useApp();
   const { categories, products, loading } = useCatalog(businessId);
   const methods = usePaymentMethods(businessId);
   const { sessions } = useOpenSessions(businessId);
@@ -192,14 +192,14 @@ function POS() {
         <div className="grid flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto p-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filtered.map((p) => {
             const shop = unitKind(p.business_unit_id) === "shop";
-            const stock = p.stock_mode === "variant" ? (p.product_variants ?? []).reduce((s, v) => s + Number(v.stock), 0) : null;
+            const stock = p.stock_mode === "variant" && p.track_stock !== false ? (p.product_variants ?? []).reduce((s, v) => s + Number(v.stock), 0) : null;
             return (
               <button key={p.id} onClick={() => tapProduct(p)}
                 className={clsx("card group flex flex-col overflow-hidden text-left transition hover:-translate-y-0.5 hover:shadow-md", !p.is_available && "opacity-50")}>
                 <div className="relative aspect-[4/3] bg-sand-50">
                   {p.image_url ? <img src={p.image_url} alt="" className="h-full w-full object-cover" loading="lazy" /> :
                     <div className="flex h-full items-center justify-center text-sand">{shop ? <Store size={28} /> : <Utensils size={28} />}</div>}
-                  <span className={clsx("chip absolute top-2 left-2", shop ? "bg-charcoal text-sand" : "bg-burgundy text-white")}>{shop ? "Tienda" : "Gastronomía"}</span>
+                  <span className={clsx("chip absolute top-2 left-2", shop ? "bg-charcoal text-sand" : "bg-burgundy text-white")}>{shop ? unitName("shop") : unitName("gastronomy")}</span>
                 </div>
                 <div className="flex flex-1 flex-col p-3">
                   <span className="line-clamp-2 text-sm font-medium">{p.name}</span>
@@ -252,7 +252,7 @@ function POS() {
                     <div className="text-xs text-charcoal/55">
                       {[i.variant_label, i.modifiers?.map((m) => m.name).join(", "), i.notes].filter(Boolean).join(" · ")}
                       {Number(i.discount) > 0 && <span className="text-burgundy"> · desc. {money(i.discount)}</span>}
-                      {unitKind(i.business_unit_id) === "shop" ? <span> · Tienda</span> : i.ticket_id ? <span> · enviado</span> : <span className="text-amber-700"> · sin enviar</span>}
+                      {unitKind(i.business_unit_id) === "shop" ? <span> · {unitName("shop")}</span> : i.ticket_id ? <span> · enviado</span> : <span className="text-amber-700"> · sin enviar</span>}
                     </div>
                   </div>
                   {!order?.finalized && (
@@ -290,7 +290,7 @@ function POS() {
               </div>
             </div>
           ))}
-          {cart.length === 0 && items.length === 0 && <p className="px-6 py-16 text-center text-sm text-charcoal/50">Agregue productos de gastronomía y de tienda a la misma cuenta.</p>}
+          {cart.length === 0 && items.length === 0 && <p className="px-6 py-16 text-center text-sm text-charcoal/50">Agregue comida y camisas a la misma cuenta.</p>}
         </div>
 
         <div className="space-y-2 border-t border-stone-line p-3">
@@ -322,7 +322,7 @@ function POS() {
       <ProductOptions product={picking} open={!!picking} onClose={() => setPicking(null)} onAdd={(r) => picking && addLine(picking, r)} />
 
       {order && modal === "pay" && (
-        <PaymentModal order={order} open onClose={() => setModal(null)} methods={methods} sessions={sessions} units={units} canTip
+        <PaymentModal order={order} open onClose={() => setModal(null)} onRefresh={async () => { await loadOrder(order.id); loadOpen(); }} methods={methods} sessions={sessions} units={units} canTip
           onDone={async (fin, change) => {
             setLastChange(change); await loadOrder(order.id); loadOpen();
             if (fin) { toast("success", "Pago registrado. Ingresos distribuidos por unidad."); setModal("receipt"); }

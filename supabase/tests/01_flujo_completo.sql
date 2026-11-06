@@ -269,6 +269,77 @@ select jsonb_array_length(report_rows(:'b', 'sales_by_product', current_date - 1
 select cash_close(:'sess', 100000 + 40000) as cierre \gset
 \echo :cierre
 
+-- ===== Fase 2: comisión Mi Tierra, camisas sin existencias, puntos, gastos con medio de pago
+reset role;
+update businesses set shop_commission_pct = 10, loyalty_enabled = true, loyalty_points_per_1000 = 1,
+  loyalty_point_value = 10, loyalty_min_redeem = 100 where id = :'b';
+update business_units set name = 'Rupícola' where id = :'gastro';
+update business_units set name = 'Mi Tierra' where id = :'shop';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select cash_open((select id from cash_registers where business_id = :'b'), 50000) as sess2 \gset
+insert into products (business_id, business_unit_id, category_id, name, price, stock_mode, sku, track_stock)
+select :'b', :'shop', id, 'Camisa Mi Tierra', 60000, 'variant', 'MT-01', false from categories where business_id = :'b' and slug = 'camisas-personalizadas';
+select id as mt from products where sku = 'MT-01' \gset
+insert into product_variants (business_id, product_id, sku, size, color, design, cost) values (:'b', :'mt', 'MT-01-S', 'S', 'Blanco', 'Colibrí', 0);
+select id as mt_s from product_variants where sku = 'MT-01-S' \gset
+select pg_temp.check((select (p->>'is_available')::boolean from jsonb_array_elements(public_menu('rupicola')->'products') p where p->>'id' = :'mt') and (select (v->>'available')::boolean from jsonb_array_elements(public_menu('rupicola')->'products') p, jsonb_array_elements(p->'variants') v where p->>'id' = :'mt'), 'camisa sin control de existencias aparece disponible en el menú');
+insert into customers (business_id, full_name, phone, points) values (:'b', 'Lucía Puntos', '3105550000', 150);
+select id as cli from customers where phone = '3105550000' \gset
+
+-- Hamburguesa 28.000 + camisa Mi Tierra 60.000 (sin existencias) = 88.000
+select pos_create_order(:'b', 'counter', jsonb_build_array(
+  jsonb_build_object('product_id', :'ham', 'qty', 1),
+  jsonb_build_object('product_id', :'mt', 'variant_id', :'mt_s', 'qty', 1)), null, :'cli') as o5 \gset
+select pg_temp.check((select commission_pct from order_items where order_id = :'o5' and product_id = :'mt') = 10, 'la línea de camisa guarda comisión del 10 %');
+do $$ begin
+  perform pos_redeem_points((select id from orders where customer_id = (select id from customers where phone = '3105550000')), 50);
+  raise exception 'debió fallar';
+exception when others then if sqlerrm = 'debió fallar' then raise; end if; raise notice 'ok · bloquea canje bajo el mínimo (%)', sqlerrm; end $$;
+select pos_redeem_points(:'o5', 120) as red \gset
+select pg_temp.check((:'red'::jsonb->>'value')::numeric = 1200 and (select points from customers where id = :'cli') = 30, 'canje: 120 puntos = $1.200, quedan 30');
+select pos_register_payments(:'o5', jsonb_build_array(
+  jsonb_build_object('method_id', (select id from payment_methods where business_id = :'b' and code = 'cash'), 'amount', 40000, 'received_amount', 40000),
+  jsonb_build_object('method_id', (select id from payment_methods where business_id = :'b' and code = 'transfer'), 'amount', 46800, 'reference', 'TR-998877')), :'sess2') as res5 \gset
+select pg_temp.check((:'res5'::jsonb->>'finalized')::boolean, 'pedido con puntos + efectivo + transferencia queda pagado');
+select pg_temp.check((select sum(amount) from revenue_entries where order_id = :'o5' and business_unit_id = :'shop') = 54000, 'Mi Tierra recibe 54.000 (60.000 menos 10 %)');
+select pg_temp.check((select sum(amount) from revenue_entries where order_id = :'o5' and business_unit_id = :'gastro' and concept = 'commission') = 6000, 'Rupícola registra 6.000 de comisión');
+select pg_temp.check((select sum(amount) from revenue_entries where order_id = :'o5' and business_unit_id = :'gastro') = 34000, 'Rupícola: 28.000 + 6.000');
+select pg_temp.check((select sum(amount) from payment_allocations where order_id = :'o5' and business_unit_id = :'shop') = 54000, 'pagos asignados a Mi Tierra 54.000');
+select pg_temp.check((select sum(amount) from payment_allocations where order_id = :'o5' and business_unit_id = :'gastro') = 34000, 'pagos asignados a Rupícola 34.000');
+select pg_temp.check((select points from customers where id = :'cli') = 30 + 86, 'gana puntos solo sobre lo pagado en dinero (86.800 → 86)');
+select pos_create_order(:'b', 'counter', jsonb_build_array(jsonb_build_object('product_id', :'cafe', 'qty', 1))) as o6 \gset
+select set_config('test.o6', :'o6', false);
+do $$ begin
+  perform pos_register_payments(current_setting('test.o6')::uuid, jsonb_build_array(jsonb_build_object('method_id', (select id from payment_methods where code = 'points'), 'amount', 1)), null);
+  raise exception 'debió fallar';
+exception when others then if sqlerrm = 'debió fallar' then raise; end if; raise notice 'ok · no se paga con puntos por el cobro normal (%)', sqlerrm; end $$;
+
+-- Reverso del pago con puntos: devuelve los puntos y quita los ganados
+select payment_void((select p.id from payments p join payment_methods m on m.id = p.method_id where p.order_id = :'o5' and m.code = 'points'), 'Prueba de reverso');
+select pg_temp.check((select points from customers where id = :'cli') = 150, 'reverso devuelve 120 puntos y descuenta los 86 ganados');
+select pg_temp.check((select count(*) from loyalty_movements where customer_id = :'cli') = 4, 'historial de puntos: canje, ganados, devolución y reverso');
+
+select pg_temp.check(not (select finalized from orders where id = :'o5'), 'pedido vuelve a quedar con saldo pendiente');
+select pos_register_payments(:'o5', jsonb_build_array(
+  jsonb_build_object('method_id', (select id from payment_methods where business_id = :'b' and code = 'cash'), 'amount', 1200, 'received_amount', 2000)), :'sess2');
+select pg_temp.check((select sum(amount) from revenue_entries where order_id = :'o5' and business_unit_id = :'gastro') = 34000 and (select sum(amount) from revenue_entries where order_id = :'o5' and business_unit_id = :'shop') = 54000, 'al completar el pago de nuevo: Rupícola 34.000 y Mi Tierra 54.000 netos');
+
+-- Gasto con medio de pago (100 % Rupícola)
+select expense_create(:'b', (select id from expense_categories where code = 'rent' and business_id = :'b'), 'gastronomy', 'Gas', 20000, current_date,
+  null, :'sess2', null, null, (select id from payment_methods where business_id = :'b' and code = 'transfer')) as gx \gset
+select pg_temp.check((select m.code from expenses e join payment_methods m on m.id = e.method_id where e.id = :'gx') = 'transfer', 'gasto guarda el medio de pago');
+
+select cash_session_summary(:'sess2') as cs \gset
+select pg_temp.check(exists (select 1 from jsonb_array_elements(:'cs'::jsonb->'by_unit_method') x where x->>'unit' = 'Mi Tierra'), 'caja muestra Mi Tierra por medio de pago');
+\echo :cs
+select report_rows(:'b', 'commissions', current_date - 1, current_date) as com \gset
+\echo :com
+select pg_temp.check((select sum((x->>'comision')::numeric) from jsonb_array_elements(:'com'::jsonb) x) = 6000, 'liquidación Mi Tierra: comisión 6.000');
+select dashboard_summary(:'b', current_date - 7, current_date) as dash2 \gset
+select pg_temp.check(jsonb_array_length(:'dash2'::jsonb->'by_unit_method') > 0, 'dashboard por negocio y medio de pago');
+reset role;
+
 -- ===== Aislamiento entre establecimientos
 reset role;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000ff');

@@ -13,6 +13,8 @@ type Ctx = {
   businessId: string;
   units: Unit[];
   unitByKind: (k: "gastronomy" | "shop") => Unit | undefined;
+  /** Nombre configurable del negocio (p. ej. “Rupícola” / “Mi Tierra”) */
+  unitName: (k: "gastronomy" | "shop") => string;
   can: (perm: string) => boolean;
   switchBusiness: (id: string) => void;
   reload: () => Promise<void>;
@@ -55,6 +57,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       businessId: current?.business.id ?? "",
       units: current?.units ?? [],
       unitByKind: (k) => current?.units.find((u) => u.kind === k),
+      unitName: (k) => current?.units.find((u) => u.kind === k)?.name || (k === "shop" ? "Tienda" : "Gastronomía"),
       can: (p) => perms.has("*") || perms.has(p) || perms.has(p.split(".")[0] + ".*"),
       switchBusiness: (id) => { try { localStorage.setItem(KEY, id); } catch {} setSelected(id); },
       reload,

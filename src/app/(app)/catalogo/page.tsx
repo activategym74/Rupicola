@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Plus, Pencil, Search, Store, Utensils, Trash2, Upload, Box } from "lucide-react";
+import { Plus, Pencil, Search, Store, Utensils, Trash2, Upload, Box, FileSpreadsheet } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { useCatalog } from "@/lib/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -9,6 +9,7 @@ import { money, errMsg } from "@/lib/format";
 import { PageHeader, PageLoader, Empty } from "@/components/ui/bits";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { ImportExcel } from "@/components/catalog/import-excel";
 import type { Category, Product, Variant, ModifierGroup } from "@/lib/types";
 
 type Station = { id: string; name: string; code: string };
@@ -24,6 +25,7 @@ export default function CatalogPage() {
   const [editCat, setEditCat] = useState<Category | "new" | null>(null);
   const [stations, setStations] = useState<Station[]>([]);
   const [allCats, setAllCats] = useState<Category[]>([]);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     if (!businessId) return;
@@ -39,7 +41,7 @@ export default function CatalogPage() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Catálogo" subtitle="Productos, precios, variantes, recetas y personalización"
-        actions={tab === "products" ? <button className="btn-primary" onClick={() => setEdit("new")}><Plus size={16} /> Nuevo producto</button>
+        actions={tab === "products" ? <><button className="btn-secondary" onClick={() => setImporting(true)}><FileSpreadsheet size={16} /> Importar Excel</button><button className="btn-primary" onClick={() => setEdit("new")}><Plus size={16} /> Nuevo producto</button></>
           : <button className="btn-primary" onClick={() => setEditCat("new")}><Plus size={16} /> Nueva categoría</button>} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {(["products", "categories"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={clsx("chip border !px-3 !py-1.5", tab === t ? "border-burgundy bg-burgundy text-white" : "border-stone-line bg-white")}>{t === "products" ? "Productos" : "Categorías"}</button>)}
@@ -60,7 +62,7 @@ export default function CatalogPage() {
                 <td><div className="font-medium">{p.name}</div><div className="text-xs text-charcoal/50">{p.sku}{p.model_3d_url && " · 3D"}</div></td>
                 <td>{categories.find((c) => c.id === p.category_id)?.name}</td>
                 <td>{unitName(p.business_unit_id)}</td>
-                <td className="text-xs">{p.stock_mode === "variant" ? `${p.product_variants?.length ?? 0} variantes · ${(p.product_variants ?? []).reduce((s, v) => s + Number(v.stock), 0)} und` : p.stock_mode === "recipe" ? "Por receta" : "Sin control"}</td>
+                <td className="text-xs">{p.stock_mode === "variant" && p.track_stock === false ? `${p.product_variants?.length ?? 0} variantes · sin control de existencias` : p.stock_mode === "variant" ? `${p.product_variants?.length ?? 0} variantes · ${(p.product_variants ?? []).reduce((s, v) => s + Number(v.stock), 0)} und` : p.stock_mode === "recipe" ? "Por receta" : "Sin control"}</td>
                 <td className="text-right">{money(p.price)}</td>
                 <td>{p.is_available ? <span className="chip bg-emerald-50 text-emerald-800">Disponible</span> : <span className="chip bg-red-50 text-red-700">No disponible</span>}</td>
                 <td><button className="btn-ghost !p-1.5" onClick={() => setEdit(p)} aria-label="Editar"><Pencil size={16} /></button></td>
@@ -78,6 +80,7 @@ export default function CatalogPage() {
       )}
 
       {edit && <ProductEditor product={edit === "new" ? null : edit} categories={allCats} stations={stations} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
+      {importing && <ImportExcel businessId={businessId} units={units} categories={allCats} products={products} onClose={() => setImporting(false)} onDone={() => { setImporting(false); reload(); }} />}
       {editCat && <CategoryEditor cat={editCat === "new" ? null : editCat} stations={stations} onClose={() => setEditCat(null)} onSaved={() => { setEditCat(null); reload(); }} />}
     </div>
   );
@@ -127,6 +130,7 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
   const [busy, setBusy] = useState(false);
   const cat = categories.find((c) => c.id === p.category_id);
   const kind = units.find((u) => u.id === cat?.business_unit_id)?.kind ?? "gastronomy";
+  const tracks = p.track_stock ?? (product ? true : kind !== "shop");
 
   useEffect(() => {
     sb.from("ingredients").select("id, name, unit, cost_per_unit").eq("business_id", businessId).eq("active", true).order("name")
@@ -146,7 +150,7 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
 
   async function save() {
     if (!p.name?.trim() || !p.category_id) return toast("error", "Nombre y categoría son obligatorios");
-    if (kind === "shop" && variants.length === 0) return toast("error", "Los productos de tienda necesitan al menos una variante (talla/color)");
+    if (kind === "shop" && variants.length === 0 && tracks) return toast("error", "Agregue al menos una variante (talla/color) o desmarque “Controlar existencias”");
     setBusy(true);
     const row = {
       business_id: businessId, business_unit_id: cat!.business_unit_id, category_id: p.category_id, name: p.name.trim(), description: p.description || null,
@@ -155,13 +159,15 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
       is_available: !!p.is_available, active: p.active ?? true, sort: Number(p.sort ?? 0),
       station_id: kind === "shop" ? null : (p.station_id || null),
       stock_mode: kind === "shop" ? "variant" : recipe.length ? "recipe" : "none",
+      track_stock: kind === "shop" ? tracks : true,
     };
+    const vlist: VRow[] = kind === "shop" && variants.length === 0 ? [{ _new: true, size: "Única", active: true, min_stock: 0, cost: 0 }] : variants;
     try {
       let id = product?.id;
       if (id) { const { error } = await sb.from("products").update(row).eq("id", id); if (error) throw error; }
       else { const { data, error } = await sb.from("products").insert(row).select("id").single(); if (error) throw error; id = data.id; }
       // Variantes (las existencias SOLO cambian por movimientos de inventario)
-      for (const v of variants) {
+      for (const v of vlist) {
         const vr = { business_id: businessId, product_id: id, sku: v.sku || null, barcode: v.barcode || null, size: v.size || null, color: v.color || null,
           design: v.design || null, price: v.price ? Number(v.price) : null, min_stock: Number(v.min_stock ?? 0), image_url: v.image_url || null, active: v.active ?? true };
         const { error } = v.id ? await sb.from("product_variants").update(vr).eq("id", v.id) : await sb.from("product_variants").insert({ ...vr, cost: Number(v.cost ?? 0) });
@@ -227,6 +233,8 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
         <section className="mt-6">
           <div className="mb-2 flex items-center justify-between"><h3 className="font-medium">Variantes (talla · color · diseño)</h3>
             <button className="btn-ghost !py-1 text-sm" onClick={() => setVariants((s) => [...s, { _new: true, active: true, stock: 0, min_stock: 0, cost: 0 }])}><Plus size={14} /> Variante</button></div>
+          <label className="mb-2 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={tracks} onChange={(e) => set("track_stock", e.target.checked)} />
+            <span>Controlar existencias<span className="block text-xs text-charcoal/50">Desmarcado: se vende aunque no haya unidades cargadas en inventario (consignación de {units.find((u) => u.kind === "shop")?.name ?? "la marca"}). Si no agrega variantes se crea la talla “Única”.</span></span></label>
           <div className="overflow-x-auto"><table className="table-base"><thead><tr><th>Talla</th><th>Color</th><th>Diseño</th><th>Referencia</th><th>Cód. barras</th><th>Precio</th><th>Mín.</th><th>Existencia</th></tr></thead>
             <tbody>{variants.map((v, i) => {
               const up = (k: keyof VRow, val: string) => setVariants((s) => s.map((x, j) => j === i ? { ...x, [k]: val } : x));

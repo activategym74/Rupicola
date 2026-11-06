@@ -88,7 +88,7 @@ export default function TableMenu({ params }: { params: Promise<{ token: string 
               <div className="mb-2 flex items-center justify-between"><b>Pedido #{o.number}</b><StatusBadge status={o.status} /></div>
               {o.items.map((i, k) => (
                 <div key={k} className="flex items-center justify-between border-b border-stone-line py-1.5 text-sm">
-                  <span>{Number(i.qty)} × {i.name}</span>{i.status !== "n/a" ? <StatusBadge status={i.status} /> : <span className="text-xs text-charcoal/50">Tienda</span>}
+                  <span>{Number(i.qty)} × {i.name}</span>{i.status !== "n/a" ? <StatusBadge status={i.status} /> : <span className="text-xs text-charcoal/50">Se entrega aparte</span>}
                 </div>
               ))}
               <div className="mt-2 text-right font-semibold">{money(o.total)}</div>

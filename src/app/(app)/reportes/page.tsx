@@ -12,18 +12,19 @@ import { useToast } from "@/components/ui/toast";
 const REPORTS: { key: string; label: string; finance?: boolean }[] = [
   { key: "sales_by_date", label: "Ventas por fecha" }, { key: "sales_by_product", label: "Ventas por producto" }, { key: "sales_by_category", label: "Ventas por categoría" },
   { key: "sales_by_employee", label: "Ventas por empleado" }, { key: "sales_by_channel", label: "Presencial vs. domicilio" }, { key: "payment_methods", label: "Métodos de pago" },
+  { key: "commissions", label: "Liquidación de camisas", finance: true },
   { key: "results", label: "Utilidad estimada por unidad", finance: true }, { key: "expenses", label: "Gastos", finance: true },
   { key: "inventory", label: "Inventario valorizado" }, { key: "inventory_movements", label: "Movimientos de inventario" },
   { key: "purchases", label: "Compras", finance: true }, { key: "suppliers", label: "Proveedores", finance: true },
   { key: "couriers", label: "Rendimiento de domiciliarios" }, { key: "prep_times", label: "Tiempo de preparación" },
   { key: "delivery_times", label: "Tiempo de entrega" }, { key: "cancelled", label: "Pedidos cancelados" },
 ];
-const MONEY = /ingresos|costo|ventas|total|valor|propinas|pagado|saldo|gastos|revenue|cost|expenses|result|por_pagar|ticket/i;
+const MONEY = /ingresos|costo|ventas|total|valor|propinas|pagado|saldo|gastos|revenue|cost|expenses|result|por_pagar|ticket|^comision$|^neto/i;
 
 export default function ReportsPage() {
   const sb = supabaseBrowser();
   const toast = useToast();
-  const { businessId, units, can } = useApp();
+  const { businessId, units, can, unitName } = useApp();
   const [kind, setKind] = useState("sales_by_date");
   const [from, setFrom] = useState(daysAgo(29)), [to, setTo] = useState(today());
   const [unit, setUnit] = useState("");
@@ -36,7 +37,8 @@ export default function ReportsPage() {
   }, [sb, businessId, kind, from, to, unit, toast]);
   useEffect(() => { if (businessId) load(); }, [businessId, load]);
 
-  const label = REPORTS.find((r) => r.key === kind)!.label;
+  const label = kind === "commissions" ? `Liquidación ${unitName("shop")}` : REPORTS.find((r) => r.key === kind)!.label;
+  const tot = (k: string) => (rows ?? []).reduce((s, r) => s + Number(r[k] ?? 0), 0);
   const sub = `${from} a ${to}${unit ? ` · ${units.find((u) => u.id === unit)?.name}` : ""}`;
   const cols = Object.keys(rows?.[0] ?? {});
   const fmt = (k: string, v: unknown) => (typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v)) ? (MONEY.test(k) ? money(v as number) : num(v as number, 2)) : String(v ?? ""));
@@ -55,8 +57,15 @@ export default function ReportsPage() {
       </div>
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className="card h-fit p-2">{REPORTS.filter((r) => !r.finance || can("reports.finance")).map((r) =>
-          <button key={r.key} onClick={() => setKind(r.key)} className={clsx("w-full rounded-lg px-3 py-2 text-left text-sm", kind === r.key ? "bg-burgundy text-white" : "hover:bg-sand-50")}>{r.label}</button>)}</div>
+          <button key={r.key} onClick={() => setKind(r.key)} className={clsx("w-full rounded-lg px-3 py-2 text-left text-sm", kind === r.key ? "bg-burgundy text-white" : "hover:bg-sand-50")}>{r.key === "commissions" ? `Liquidación ${unitName("shop")}` : r.label}</button>)}</div>
         <div className="card overflow-x-auto">
+          {kind === "commissions" && rows && rows.length > 0 && (
+            <div className="grid gap-3 border-b border-stone-line p-4 sm:grid-cols-3">
+              <div><div className="label">Ventas de {unitName("shop")}</div><div className="text-lg font-semibold">{money(tot("ventas"))}</div></div>
+              <div><div className="label">Comisión de {unitName("gastronomy")}</div><div className="text-lg font-semibold">{money(tot("comision"))}</div></div>
+              <div><div className="label">A pagar a {unitName("shop")}</div><div className="text-lg font-semibold text-burgundy">{money(tot("neto_tienda"))}</div></div>
+            </div>
+          )}
           {!rows ? <div className="flex h-40 items-center justify-center"><Spinner /></div> : rows.length === 0 ? <p className="p-10 text-center text-sm text-charcoal/50">Sin datos para el período</p> : (
             <table className="table-base"><thead><tr>{cols.map((c) => <th key={c}>{c.replace(/_/g, " ")}</th>)}</tr></thead>
               <tbody>{rows.map((r, i) => <tr key={i}>{cols.map((c) => <td key={c} className={typeof r[c] === "number" ? "text-right" : ""}>{fmt(c, r[c])}</td>)}</tr>)}</tbody></table>
