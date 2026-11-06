@@ -605,7 +605,7 @@ declare
   v jsonb;
 begin
   perform require_perm(p_business, 'reports.view');
-  if p_kind in ('costs', 'expenses', 'results', 'purchases', 'suppliers') then perform require_perm(p_business, 'reports.finance'); end if;
+  if p_kind in ('costs', 'expenses', 'results', 'purchases', 'suppliers', 'commissions') then perform require_perm(p_business, 'reports.finance'); end if;
 
   case p_kind
   when 'sales_by_date' then
