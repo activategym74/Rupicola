@@ -1,6 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Trash2, Star } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { money, errMsg } from "@/lib/format";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -11,9 +11,9 @@ import type { Order } from "./types";
 type Line = { method_id: string; amount: string; received: string; reference: string };
 
 /** Cobro con pagos mixtos. El reparto por unidad de negocio lo hace la base de datos. */
-export function PaymentModal({ order, open, onClose, onDone, methods, sessions, units, suggestedTipPct = 10, canTip }: {
-  order: Order; open: boolean; onClose: () => void; onDone: (finalized: boolean, change: number) => void;
-  methods: PaymentMethod[]; sessions: CashSession[]; units: { id: string; name: string }[]; suggestedTipPct?: number; canTip: boolean;
+export function PaymentModal({ order, open, onClose, onDone, onRefresh, methods, sessions, units, suggestedTipPct = 10, canTip }: {
+  order: Order; open: boolean; onClose: () => void; onDone: (finalized: boolean, change: number) => void; onRefresh?: () => Promise<void> | void;
+  methods: PaymentMethod[]; sessions: CashSession[]; units: { id: string; name: string; kind?: string }[]; suggestedTipPct?: number; canTip: boolean;
 }) {
   const toast = useToast();
   const manual = methods.filter((m) => !m.gateway);
@@ -26,11 +26,17 @@ export function PaymentModal({ order, open, onClose, onDone, methods, sessions, 
   const due = Number(order.total) + Number(tip || 0) - Number(order.paid_total);
   const sum = lines.reduce((s, l) => s + Number(l.amount || 0), 0);
   const remaining = due - sum;
+  const gastroId = units.find((u) => u.kind === "gastronomy")?.id;
   const byUnit = useMemo(() => {
     const m: Record<string, number> = {};
-    order.order_items.filter((i) => i.status === "active").forEach((i) => { m[i.business_unit_id] = (m[i.business_unit_id] ?? 0) + Number(i.line_total); });
+    order.order_items.filter((i) => i.status === "active").forEach((i) => {
+      const fee = Math.round(Number(i.line_total) * Number(i.commission_pct ?? 0)) / 100;
+      m[i.business_unit_id] = (m[i.business_unit_id] ?? 0) + Number(i.line_total) - fee;
+      if (fee > 0 && gastroId) m[gastroId] = (m[gastroId] ?? 0) + fee;
+    });
     return m;
-  }, [order]);
+  }, [order, gastroId]);
+  const commission = order.order_items.filter((i) => i.status === "active").reduce((s, i) => s + Math.round(Number(i.line_total) * Number(i.commission_pct ?? 0)) / 100, 0);
   const change = lines.reduce((s, l) => {
     const m = methods.find((x) => x.id === l.method_id);
     return s + (m?.is_cash && l.received ? Math.max(Number(l.received) - Number(l.amount || 0), 0) : 0);
@@ -87,6 +93,11 @@ export function PaymentModal({ order, open, onClose, onDone, methods, sessions, 
           <button className="btn-ghost" onClick={() => setLines((s) => [...s, { method_id: manual[1]?.id ?? manual[0]?.id ?? "", amount: String(Math.max(remaining, 0)), received: "", reference: "" }])}>
             <Plus size={16} /> Agregar otro medio de pago
           </button>
+          {order.customer_id && <PointsBox order={order} due={due} onRedeemed={async (newDue, finalized) => {
+            if (finalized) return onDone(true, 0);
+            await onRefresh?.();
+            setLines([{ method_id: manual[0]?.id ?? "", amount: String(Math.max(newDue, 0)), received: "", reference: "" }]);
+          }} />}
           {needsSession && (
             <div>
               <label className="label">Caja</label>
@@ -119,6 +130,7 @@ export function PaymentModal({ order, open, onClose, onDone, methods, sessions, 
           <div className="border-t border-stone-line pt-2 text-xs text-charcoal/60">
             Distribución interna:
             {Object.entries(byUnit).map(([u, v]) => <div key={u} className="flex justify-between"><span>{units.find((x) => x.id === u)?.name}</span><span>{money(v)}</span></div>)}
+            {commission > 0 && <div className="mt-1 text-[11px]">Incluye {money(commission)} de comisión para {units.find((x) => x.id === gastroId)?.name}.</div>}
           </div>
         </div>
       </div>
@@ -127,4 +139,45 @@ export function PaymentModal({ order, open, onClose, onDone, methods, sessions, 
 }
 function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   return <div className={`flex justify-between ${strong ? "text-base font-semibold" : ""}`}><span>{k}</span><span>{v}</span></div>;
+}
+
+/** Canje de puntos del cliente asociado al pedido (se registra como un pago aparte). */
+function PointsBox({ order, due, onRedeemed }: { order: Order; due: number; onRedeemed: (newDue: number, finalized: boolean) => void }) {
+  const toast = useToast();
+  const [info, setInfo] = useState<{ points: number; value: number; min: number; enabled: boolean } | null>(null);
+  const [pts, setPts] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const sb = supabaseBrowser();
+    Promise.all([
+      sb.from("customers").select("points").eq("id", order.customer_id!).single(),
+      sb.from("businesses").select("loyalty_enabled, loyalty_point_value, loyalty_min_redeem").eq("id", order.business_id).single(),
+    ]).then(([c, b]) => {
+      if (c.data && b.data) setInfo({ points: Number(c.data.points), value: Number(b.data.loyalty_point_value), min: Number(b.data.loyalty_min_redeem), enabled: !!b.data.loyalty_enabled });
+    });
+  }, [order.customer_id, order]);
+  if (!info || !info.enabled || info.points <= 0) return null;
+  const maxPts = Math.min(Math.floor(info.points), info.value > 0 ? Math.floor(due / info.value) : 0);
+  const n = Number(pts || 0);
+  async function redeem() {
+    setBusy(true);
+    const { data, error } = await supabaseBrowser().rpc("pos_redeem_points", { p_order: order.id, p_points: n });
+    setBusy(false);
+    if (error) return toast("error", errMsg(error));
+    toast("success", `Canjeados ${n} puntos por ${money(data.value)}`);
+    setInfo((s) => s && { ...s, points: Number(data.points_left) }); setPts("");
+    onRedeemed(Number(data.due), !!data.finalized);
+  }
+  return (
+    <div className="rounded-xl border border-sand bg-sand-50/60 p-3 text-sm">
+      <div className="mb-2 flex items-center gap-2 font-medium"><Star size={16} className="text-burgundy" /> {order.customer_name ?? "Cliente"} tiene {info.points} puntos ({money(info.points * info.value)})</div>
+      {info.points < info.min ? <p className="text-xs text-charcoal/60">Puede canjear desde {info.min} puntos.</p> : (
+        <div className="flex flex-wrap items-center gap-2">
+          <input className="input !w-28" inputMode="numeric" placeholder={`${info.min}–${maxPts}`} value={pts} onChange={(e) => setPts(e.target.value.replace(/[^0-9]/g, ""))} aria-label="Puntos a canjear" />
+          <button type="button" className="btn-ghost !px-2 text-xs" onClick={() => setPts(String(maxPts))}>Máximo</button>
+          <button type="button" className="btn-secondary" disabled={busy || n < info.min || n > maxPts} onClick={redeem}>Canjear {n > 0 ? money(n * info.value) : ""}</button>
+        </div>
+      )}
+    </div>
+  );
 }

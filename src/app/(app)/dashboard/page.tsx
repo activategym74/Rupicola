@@ -10,6 +10,7 @@ import { money, num, daysAgo, today, errMsg } from "@/lib/format";
 import { PageHeader, PageLoader, Stat, Empty } from "@/components/ui/bits";
 import { C, SERIES } from "@/components/charts/palette";
 import { LogoMark } from "@/components/brand/logo";
+import { UnitMethodTable, type UnitMethodRow } from "@/components/ui/unit-method-table";
 import { useToast } from "@/components/ui/toast";
 
 type Dash = {
@@ -21,6 +22,7 @@ type Dash = {
   expenses_daily: { day: string; total: number }[];
   top_products: { name: string; qty: number; total: number }[];
   by_category: { name: string; revenue: number; cost: number; margin: number }[];
+  by_unit_method?: UnitMethodRow[];
   by_method: { name: string; total: number }[];
   by_employee: { name: string; orders: number; total: number }[];
 };
@@ -34,7 +36,7 @@ function weekKey(d: string) {
 }
 
 export default function DashboardPage() {
-  const { businessId, units, current } = useApp();
+  const { businessId, units, current, unitName } = useApp();
   const toast = useToast();
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(today());
@@ -58,7 +60,7 @@ export default function DashboardPage() {
   }, {}));
   const expMap = Object.fromEntries(d.expenses_daily.map((e) => [e.day, Number(e.total)]));
   const incomeVsExp = d.daily.map((r) => ({ day: r.day.slice(5), ingresos: Number(r.total), gastos: expMap[r.day] ?? 0 }));
-  const dist = [{ name: "Gastronomía", value: Number(d.gastronomy_range) }, { name: "Tienda", value: Number(d.shop_range) }].filter((x) => x.value > 0);
+  const dist = [{ name: unitName("gastronomy"), value: Number(d.gastronomy_range) }, { name: unitName("shop"), value: Number(d.shop_range) }].filter((x) => x.value > 0);
 
   return (
     <div className="animate-fade-in">
@@ -76,8 +78,8 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat tone="burgundy" label="Ventas del día" value={money(d.sales_today)} hint={`Mes: ${money(d.sales_month)}`} icon={<TrendingUp size={18} />} />
-        <Stat label="Gastronomía" value={money(d.gastronomy_range)} hint="En el período" icon={<Utensils size={18} />} />
-        <Stat label="Tienda" value={money(d.shop_range)} hint="En el período" icon={<Shirt size={18} />} />
+        <Stat label={unitName("gastronomy")} value={money(d.gastronomy_range)} hint="En el período" icon={<Utensils size={18} />} />
+        <Stat label={unitName("shop")} value={money(d.shop_range)} hint="En el período" icon={<Shirt size={18} />} />
         <Stat label="Resultado estimado" value={money(profit)} hint={`Gastos: ${money(d.expenses_range)} · hoy ${money(d.expenses_today)}`} icon={<Receipt size={18} />} />
         <Stat label="Pedidos activos" value={num(d.active_orders)} icon={<ClipboardList size={18} />} />
         <Stat label="Pendientes de cocina" value={num(d.kitchen_pending)} icon={<ChefHat size={18} />} />
@@ -110,8 +112,8 @@ export default function DashboardPage() {
               <BarChart data={d.daily.map((r) => ({ ...r, day: r.day.slice(5) }))}>
                 <CartesianGrid stroke={C.grid} vertical={false} /><XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis tickFormatter={short} fontSize={11} tickLine={false} axisLine={false} width={40} /><Tooltip {...tip} /><Legend iconType="circle" />
-                <Bar dataKey="gastronomy" name="Gastronomía" stackId="a" fill={C.burgundy} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="shop" name="Tienda" stackId="a" fill={C.sand} radius={[6, 6, 0, 0]} />
+                <Bar dataKey="gastronomy" name={unitName("gastronomy")} stackId="a" fill={C.burgundy} radius={[0, 0, 0, 0]} />
+                <Bar dataKey="shop" name={unitName("shop")} stackId="a" fill={C.sand} radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -159,6 +161,9 @@ export default function DashboardPage() {
               <PieChart><Pie data={d.by_method} dataKey="total" nameKey="name" outerRadius={90}>
                 {d.by_method.map((_, i) => <Cell key={i} fill={SERIES[i % SERIES.length]} />)}</Pie><Tooltip {...tip} /><Legend iconType="circle" /></PieChart>
             </ResponsiveContainer>
+          </ChartCard>
+          <ChartCard title="Recaudo por negocio y medio de pago" className="xl:col-span-2">
+            <UnitMethodTable rows={d.by_unit_method ?? []} empty="Sin pagos en el período" />
           </ChartCard>
           <ChartCard title="Rendimiento por empleado">
             <table className="table-base"><thead><tr><th>Empleado</th><th className="text-right">Pedidos</th><th className="text-right">Ventas</th></tr></thead>

@@ -19,7 +19,7 @@ const MOV: Record<string, string> = { purchase: "Compra", sale: "Venta", adjustm
 export default function InventoryPage() {
   const sb = supabaseBrowser();
   const toast = useToast();
-  const { businessId, unitByKind, can } = useApp();
+  const { businessId, unitByKind, unitName, can } = useApp();
   const [tab, setTab] = useState<"gastro" | "shop" | "moves">("gastro");
   const [ings, setIngs] = useState<Ing[] | null>(null);
   const [vars, setVars] = useState<Var[]>([]);
@@ -47,14 +47,14 @@ export default function InventoryPage() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Inventario" subtitle={`Gastronomía ${money(valueG)} · Tienda ${money(valueS)} valorizado`}
+      <PageHeader title="Inventario" subtitle={`${unitName("gastronomy")} ${money(valueG)} · ${unitName("shop")} ${money(valueS)} valorizado`}
         actions={can("inventory.manage") && tab === "gastro" ? <button className="btn-primary" onClick={() => setEditIng("new")}><Plus size={16} /> Nuevo ingrediente</button> : undefined} />
       {expiring.length > 0 && (
         <div className="card mb-4 !border-amber-300 p-3 text-sm"><b className="text-amber-800"><AlertTriangle size={14} className="inline" /> Lotes por vencer (7 días):</b>{" "}
           {expiring.map((m) => `${m.ingredients?.name ?? m.product_variants?.products.name} (${m.expires_on})`).join(" · ")}</div>
       )}
       <div className="mb-4 flex gap-2">
-        {([["gastro", "Gastronomía"], ["shop", "Tienda"], ["moves", "Movimientos"]] as const).map(([k, l]) =>
+        {([["gastro", unitName("gastronomy")], ["shop", unitName("shop")], ["moves", "Movimientos"]] as const).map(([k, l]) =>
           <button key={k} onClick={() => setTab(k)} className={clsx("chip border !px-3 !py-1.5", tab === k ? "border-burgundy bg-burgundy text-white" : "border-stone-line bg-white")}>{l}</button>)}
       </div>
 

@@ -7,13 +7,14 @@ import { usePaymentMethods } from "@/lib/hooks";
 import { money, dateTime, errMsg } from "@/lib/format";
 import { PageHeader, PageLoader, StatusBadge } from "@/components/ui/bits";
 import { Modal, ReasonModal } from "@/components/ui/modal";
+import { UnitMethodTable, type UnitMethodRow } from "@/components/ui/unit-method-table";
 import { useToast } from "@/components/ui/toast";
 
 type Reg = { id: string; name: string };
 type Sess = { id: string; register_id: string; opening_amount: number; expected_cash: number | null; counted_cash: number | null; difference: number | null; opened_at: string; closed_at: string | null; notes: string | null;
   opener: { full_name: string } | null; closer: { full_name: string } | null };
 type Mov = { id: string; kind: string; amount: number; description: string | null; created_at: string; payment_id: string | null; business_units: { name: string } | null; payment_methods: { name: string; is_cash: boolean } | null };
-type Summary = { by_method: { method: string; is_cash: boolean; total: number }[]; by_unit: { unit: string; total: number }[]; expected_cash: number };
+type Summary = { by_method: { method: string; is_cash: boolean; total: number }[]; by_unit: { unit: string; total: number }[]; by_unit_method?: UnitMethodRow[]; expected_cash: number };
 const KIND: Record<string, string> = { opening: "Apertura", sale: "Venta", income: "Ingreso", expense: "Egreso / gasto", withdrawal: "Retiro", refund: "Reverso", delivery_collection: "Cobro domicilio", closing_adjustment: "Ajuste" };
 
 export default function CashPage() {
@@ -76,6 +77,8 @@ export default function CashPage() {
               <div className="card p-4"><div className="label">{s.closed_at ? "Contado / diferencia" : "Estado"}</div>
                 <div className="text-xl font-semibold">{s.closed_at ? `${money(s.counted_cash)} · ${money(s.difference)}` : "Abierta"}</div></div>
             </div>
+            <div className="card p-4"><div className="label mb-2">Por negocio y medio de pago</div><UnitMethodTable rows={sum.by_unit_method ?? []} />
+              <p className="mt-2 text-xs text-charcoal/50">Cada pago se reparte entre los negocios según lo que se vendió de cada uno. La comisión de las camisas ya queda del lado del restaurante.</p></div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="card p-4"><div className="label">Por método de pago</div>{sum.by_method.map((m) => <div key={m.method} className="flex justify-between py-0.5 text-sm"><span>{m.method}</span><span>{money(m.total)}</span></div>)}</div>
               <div className="card p-4"><div className="label">Por unidad de negocio</div>{sum.by_unit.map((m) => <div key={m.unit} className="flex justify-between py-0.5 text-sm"><span>{m.unit}</span><span>{money(m.total)}</span></div>)}</div>

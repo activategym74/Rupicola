@@ -19,10 +19,14 @@ export default function SettingsPage() {
   const { businessId, units, reload } = useApp();
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("general");
   const [biz, setBiz] = useState<Biz | null>(null);
+  const [unitRows, setUnitRows] = useState<{ id: string; kind: string; name: string; shared_expense_pct: number }[]>([]);
+  const gUnit = unitRows.find((u) => u.kind === "gastronomy"), sUnit = unitRows.find((u) => u.kind === "shop");
 
   const load = useCallback(async () => {
     const { data } = await sb.from("businesses").select("*").eq("id", businessId).single();
     setBiz(data as Biz);
+    const { data: us } = await sb.from("business_units").select("id, kind, name, shared_expense_pct").eq("business_id", businessId);
+    setUnitRows(us ?? []);
   }, [sb, businessId]);
   useEffect(() => { if (businessId) load(); }, [businessId, load]);
   if (!biz) return <PageLoader />;
@@ -81,18 +85,29 @@ export default function SettingsPage() {
         <form className="card grid gap-4 p-5 sm:grid-cols-2" onSubmit={async (e) => {
           e.preventDefault(); const f = new FormData(e.currentTarget);
           await saveBiz({ inventory_policy: f.get("policy"), tip_suggested_pct: Number(f.get("tip")), delivery_enabled: f.get("delivery") === "on", pickup_enabled: f.get("pickup") === "on",
-            loyalty_enabled: f.get("loyalty") === "on", loyalty_points_per_1000: Number(f.get("points")) });
+            loyalty_enabled: f.get("loyalty") === "on", loyalty_points_per_1000: Number(f.get("points")),
+            loyalty_point_value: Number(f.get("point_value")), loyalty_min_redeem: Number(f.get("min_redeem")),
+            shop_commission_pct: Number(f.get("commission")) });
           const g = units.find((u) => u.kind === "gastronomy"), s = units.find((u) => u.kind === "shop");
           const pct = Number(f.get("split"));
-          await sb.from("business_units").update({ shared_expense_pct: pct }).eq("id", g!.id);
-          await sb.from("business_units").update({ shared_expense_pct: 100 - pct }).eq("id", s!.id);
+          const r1 = await sb.from("business_units").update({ shared_expense_pct: pct, name: String(f.get("g_name") || g!.name).trim() }).eq("id", g!.id);
+          const r2 = await sb.from("business_units").update({ shared_expense_pct: 100 - pct, name: String(f.get("s_name") || s!.name).trim() }).eq("id", s!.id);
+          if (r1.error || r2.error) toast("error", errMsg(r1.error ?? r2.error)); else { load(); reload(); }
         }}>
+          <div><label className="label">Nombre del negocio de comida</label><input name="g_name" defaultValue={gUnit?.name ?? ""} placeholder="Rupícola" className="input" /></div>
+          <div><label className="label">Nombre de la marca de camisas</label><input name="s_name" defaultValue={sUnit?.name ?? ""} placeholder="Mi Tierra" className="input" /></div>
+          <div><label className="label">Comisión de {gUnit?.name ?? "gastronomía"} sobre ventas de {sUnit?.name ?? "la tienda"} (%)</label>
+            <input name="commission" type="number" min={0} max={100} step="0.5" defaultValue={Number(biz.shop_commission_pct ?? 0)} className="input" />
+            <p className="mt-1 text-xs text-charcoal/50">Se descuenta de cada camisa vendida y queda como ingreso del restaurante. El reporte “Liquidación” muestra lo que se le debe a la marca.</p></div>
           <div><label className="label">Descuento de inventario</label><select name="policy" defaultValue={String(biz.inventory_policy)} className="input">
             <option value="on_payment">Al pagar la venta</option><option value="on_confirm">Al confirmar / enviar el pedido</option></select></div>
           <div><label className="label">Propina sugerida %</label><input name="tip" type="number" step="0.5" defaultValue={Number(biz.tip_suggested_pct)} className="input" /></div>
-          <div><label className="label">Gastos compartidos: % a gastronomía</label><input name="split" type="number" min={0} max={100} defaultValue={70} className="input" />
-            <p className="mt-1 text-xs text-charcoal/50">El resto se asigna a la tienda. Puede ajustarse por gasto.</p></div>
-          <div><label className="label">Puntos por cada $1.000</label><input name="points" type="number" step="0.1" defaultValue={Number(biz.loyalty_points_per_1000)} className="input" /></div>
+          <div><label className="label">Gastos compartidos: % a {gUnit?.name ?? "gastronomía"}</label><input name="split" type="number" min={0} max={100} defaultValue={Number(gUnit?.shared_expense_pct ?? 100)} className="input" />
+            <p className="mt-1 text-xs text-charcoal/50">El resto se asigna a {sUnit?.name ?? "la tienda"}. Si la marca no asume gastos, deje 100.</p></div>
+          <div><label className="label">Puntos que gana el cliente por cada $1.000</label><input name="points" type="number" step="0.1" defaultValue={Number(biz.loyalty_points_per_1000)} className="input" /></div>
+          <div><label className="label">Valor de cada punto al canjear ($)</label><input name="point_value" type="number" min={0} step="1" defaultValue={Number(biz.loyalty_point_value ?? 10)} className="input" />
+            <p className="mt-1 text-xs text-charcoal/50">Ejemplo: con 1 punto por $1.000 y valor de $10, el cliente recupera el 1 % de lo que compra.</p></div>
+          <div><label className="label">Mínimo de puntos para canjear</label><input name="min_redeem" type="number" min={1} step="1" defaultValue={Number(biz.loyalty_min_redeem ?? 100)} className="input" /></div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="delivery" defaultChecked={!!biz.delivery_enabled} /> Recibir pedidos a domicilio</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pickup" defaultChecked={!!biz.pickup_enabled} /> Permitir recoger en el local</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="loyalty" defaultChecked={!!biz.loyalty_enabled} /> Activar programa de fidelización (puntos)</label>
