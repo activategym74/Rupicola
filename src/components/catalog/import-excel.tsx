@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileSpreadsheet, Download, ImagePlus } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -10,7 +10,7 @@ import type { Category, Product, Unit } from "@/lib/types";
 /** Fila leída del Excel, ya interpretada */
 type Row = {
   line: number; name: string; category: string; unitId: string; price: number; sku: string; description: string;
-  sizes: string[]; colors: string[]; design: string; track: boolean; photo: string;
+  sizes: string[]; colors: string[]; design: string; track: boolean; photo: string; supplier: string; supplierId?: string | null;
   image?: { data: ArrayBuffer; ext: string }; file?: File; existing?: Product; problems: string[];
 };
 
@@ -43,7 +43,7 @@ const cellText = (v: unknown): string => {
 const COLS: Record<string, string[]> = {
   name: ["nombre", "producto"], category: ["categoria"], unit: ["negocio", "unidad", "marca"], price: ["precio", "valor"],
   sku: ["codigo", "referencia", "sku"], description: ["descripcion"], sizes: ["talla"], colors: ["color"], design: ["diseno"],
-  track: ["controlar", "existencia", "inventario"], photo: ["foto", "imagen"],
+  track: ["controlar", "existencia", "inventario"], photo: ["foto", "imagen"], supplier: ["proveedor"],
 };
 
 export function ImportExcel({ businessId, units, categories, products, onClose, onDone }: {
@@ -55,6 +55,11 @@ export function ImportExcel({ businessId, units, categories, products, onClose, 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const gastro = units.find((u) => u.kind === "gastronomy"), shop = units.find((u) => u.kind === "shop");
+  const [sups, setSups] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    supabaseBrowser().from("suppliers").select("id, name").eq("business_id", businessId).eq("is_consignment", true)
+      .then(({ data }: { data: { id: string; name: string }[] | null }) => setSups(data ?? []));
+  }, [businessId]);
 
   async function template() {
     const ExcelJS = (await import("exceljs")).default;
@@ -63,12 +68,12 @@ export function ImportExcel({ businessId, units, categories, products, onClose, 
     ws.columns = [
       { header: "Nombre", width: 28 }, { header: "Categoría", width: 20 }, { header: "Negocio", width: 14 }, { header: "Precio", width: 12 },
       { header: "Código", width: 12 }, { header: "Descripción", width: 36 }, { header: "Tallas", width: 14 }, { header: "Colores", width: 16 },
-      { header: "Diseño", width: 14 }, { header: "Controlar existencias", width: 12 }, { header: "Foto", width: 22 },
+      { header: "Diseño", width: 14 }, { header: "Controlar existencias", width: 12 }, { header: "Foto", width: 22 }, { header: "Proveedor", width: 18 },
     ];
     ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF791522" } };
-    ws.addRow(["(Ejemplo) Camisa bordada", "Camisas", shop?.name ?? "Tienda", 60000, "CAM-001", "Algodón", "S,M,L", "Blanco,Negro", "", "No", "camisa-001.jpg"]);
-    ws.addRow(["(Ejemplo) Limonada de coco", "Bebidas", gastro?.name ?? "Gastronomía", 9000, "", "", "", "", "", "", ""]);
+    ws.addRow(["(Ejemplo) Camisa bordada", "Camisas", shop?.name ?? "Tienda", 60000, "CAM-001", "Algodón", "S,M,L", "Blanco,Negro", "", "Sí", "camisa-001.jpg", "Mi Tierra"]);
+    ws.addRow(["(Ejemplo) Limonada de coco", "Bebidas", gastro?.name ?? "Gastronomía", 9000, "", "", "", "", "", "", "", ""]);
     const help = wb.addWorksheet("Instrucciones");
     help.getColumn(1).width = 110;
     [
@@ -77,10 +82,11 @@ export function ImportExcel({ businessId, units, categories, products, onClose, 
       "Categoría: si no existe, se crea automáticamente en ese negocio.",
       "Precio: puede escribirlo como 60000, 60.000 o $60.000.",
       "Tallas y colores: separados por coma. Se crea una variante por cada combinación (si los deja vacíos, talla “Única”). Solo aplica a camisas.",
-      "Controlar existencias: Sí o No. Para camisas en consignación use No (se venden aunque no haya inventario cargado).",
+      "Controlar existencias: Sí o No. Con No se vende aunque no haya inventario cargado.",
       "Foto: dos opciones. (1) Inserte la imagen en la misma fila con Insertar > Imágenes > “Colocar sobre las celdas”.",
       "   (2) Escriba el nombre del archivo (ej. camisa-001.jpg) y al importar seleccione también las fotos desde su computador o celular.",
       "Si el Código ya existe en el catálogo, el producto se actualiza (precio, descripción, foto) en lugar de duplicarse.",
+      "Proveedor: nombre del proveedor en consignación (por ejemplo Mi Tierra). Debe existir en Compras y proveedores con “Trabaja en consignación”. Vacío = producto propio.",
     ].forEach((t) => help.addRow([t]));
     const buf = await wb.xlsx.writeBuffer();
     const a = document.createElement("a");
@@ -141,12 +147,16 @@ export function ImportExcel({ businessId, units, categories, products, onClose, 
         const problems: string[] = [];
         if (!category) problems.push("Falta la categoría");
         if (!Number.isFinite(price) || price < 0) problems.push("Precio no válido");
+        const supplier = g("supplier");
+        const supplierId = supplier ? sups.find((s) => norm(s.name) === norm(supplier))?.id : null;
+        if (supplier && !supplierId) problems.push(`Proveedor “${supplier}” no existe en consignación`);
+        if (supplier && !isShop) problems.push("Los productos de proveedor van en la tienda");
         const existing = (sku && products.find((p) => norm(p.sku) === norm(sku))) || undefined;
         out.push({
           line: n, name, category, unitId, price, sku, description: g("description"),
           sizes: isShop ? list(g("sizes")) : [], colors: isShop ? list(g("colors")) : [], design: g("design"),
           track: trackRaw ? /^(s|si|yes|x|1|true)$/.test(trackRaw) : !isShop,
-          photo: g("photo"), image: imgs[n], existing, problems,
+          photo: g("photo"), image: imgs[n], existing, problems, supplier, supplierId,
         });
       });
       if (out.length === 0) throw new Error("No se encontraron productos en el archivo");
@@ -196,6 +206,7 @@ export function ImportExcel({ businessId, units, categories, products, onClose, 
           business_id: businessId, business_unit_id: cat.business_unit_id, category_id: cat.id, name: r.name, price: r.price,
           description: r.description || null, sku: r.sku || null, track_stock: isShop ? r.track : true,
         };
+        if (r.supplier) row.consignment_supplier_id = r.supplierId;
         if (image_url) row.image_url = image_url;
         let id = r.existing?.id;
         if (id) {
@@ -250,7 +261,7 @@ export function ImportExcel({ businessId, units, categories, products, onClose, 
               const isShop = r.unitId === shop?.id;
               return <tr key={r.line} className={r.problems.length ? "bg-red-50/60" : ""}>
                 <td>{r.line}</td><td className="font-medium">{r.name}<div className="text-xs text-charcoal/50">{r.sku}</div></td><td>{r.category}</td>
-                <td>{units.find((u) => u.id === r.unitId)?.name}</td><td className="text-right">{Number.isFinite(r.price) ? money(r.price) : "—"}</td>
+                <td>{units.find((u) => u.id === r.unitId)?.name}{r.supplier && <div className="text-xs text-charcoal/50">Proveedor: {r.supplier}</div>}</td><td className="text-right">{Number.isFinite(r.price) ? money(r.price) : "—"}</td>
                 <td className="text-xs">{isShop ? `${Math.max(r.sizes.length, 1) * Math.max(r.colors.length, 1)} (${[r.sizes.join(", ") || "Única", r.colors.join(", ")].filter(Boolean).join(" · ")})` : "—"}</td>
                 <td className="text-xs">{isShop ? (r.track ? "Controla" : "Sin control") : "—"}</td>
                 <td className="text-xs">{photoState(r)}</td>

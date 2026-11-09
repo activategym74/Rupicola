@@ -10,7 +10,8 @@ import { PageHeader, PageLoader } from "@/components/ui/bits";
 import { Modal, ReasonModal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 
-type Supplier = { id: string; name: string; tax_id: string | null; contact_name: string | null; phone: string | null; email: string | null; address: string | null; payment_terms_days: number; notes: string | null; active: boolean };
+type Supplier = { id: string; name: string; tax_id: string | null; contact_name: string | null; phone: string | null; email: string | null; address: string | null; payment_terms_days: number; notes: string | null; active: boolean;
+  is_consignment: boolean; commission_pct: number; show_in_dashboard: boolean };
 type PItem = { id: string; ingredient_id: string | null; variant_id: string | null; description: string | null; qty_ordered: number; qty_received: number; unit_cost: number;
   ingredients: { name: string; unit: string } | null; product_variants: { size: string | null; color: string | null; products: { name: string } } | null };
 type Purchase = { id: string; status: string; invoice_number: string | null; invoice_date: string | null; due_date: string | null; total: number; paid_total: number; created_at: string;
@@ -65,8 +66,8 @@ export default function PurchasesPage() {
                 {p.status === "ordered" && <button className="btn-ghost !p-1.5 text-red-700" title="Anular" onClick={() => setCancel(p)}><Trash2 size={16} /></button>}
               </td></tr>))}</tbody></table></div>
       ) : (
-        <div className="card overflow-x-auto"><table className="table-base"><thead><tr><th>Proveedor</th><th>NIT</th><th>Contacto</th><th>Teléfono</th><th>Plazo</th><th></th></tr></thead>
-          <tbody>{suppliers.map((s) => <tr key={s.id} className={!s.active ? "opacity-50" : ""}><td className="font-medium">{s.name}</td><td>{s.tax_id}</td><td>{s.contact_name}</td><td>{s.phone}</td><td>{s.payment_terms_days} días</td>
+        <div className="card overflow-x-auto"><table className="table-base"><thead><tr><th>Proveedor</th><th>NIT</th><th>Contacto</th><th>Teléfono</th><th>Plazo</th><th>Consignación</th><th></th></tr></thead>
+          <tbody>{suppliers.map((s) => <tr key={s.id} className={!s.active ? "opacity-50" : ""}><td className="font-medium">{s.name}</td><td>{s.tax_id}</td><td>{s.contact_name}</td><td>{s.phone}</td><td>{s.payment_terms_days} días</td><td>{s.is_consignment ? `Sí · ${num(s.commission_pct, 2)} %` : "—"}</td>
             <td><button className="btn-ghost !p-1.5" onClick={() => setSup(s)}><Pencil size={16} /></button></td></tr>)}</tbody></table></div>
       )}
 
@@ -75,7 +76,9 @@ export default function PurchasesPage() {
         <Modal open onClose={() => setSup(null)} title={sup === "new" ? "Nuevo proveedor" : "Editar proveedor"} footer={<button form="sup" className="btn-primary">Guardar</button>}>
           <form id="sup" className="grid grid-cols-2 gap-3" onSubmit={async (e) => {
             e.preventDefault(); const f = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
-            const row = { business_id: businessId, name: f.name, tax_id: f.tax_id || null, contact_name: f.contact_name || null, phone: f.phone || null, email: f.email || null, address: f.address || null, payment_terms_days: Number(f.terms || 0), notes: f.notes || null, active: f.active === "on" };
+            const row = { business_id: businessId, name: f.name, tax_id: f.tax_id || null, contact_name: f.contact_name || null, phone: f.phone || null, email: f.email || null, address: f.address || null, payment_terms_days: Number(f.terms || 0), notes: f.notes || null, active: f.active === "on",
+              is_consignment: f.is_consignment === "on", commission_pct: Number(f.commission_pct || 0), show_in_dashboard: f.show_in_dashboard === "on" };
+            if (row.commission_pct < 0 || row.commission_pct > 100) return toast("error", "El porcentaje debe estar entre 0 y 100");
             const { error } = sup === "new" ? await sb.from("suppliers").insert(row) : await sb.from("suppliers").update(row).eq("id", sup.id);
             if (error) toast("error", errMsg(error)); else { setSup(null); load(); }
           }}>
@@ -84,6 +87,13 @@ export default function PurchasesPage() {
             <div><label className="label">Plazo de pago (días)</label><input name="terms" type="number" defaultValue={sup === "new" ? 0 : sup.payment_terms_days} className="input" /></div>
             <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="active" defaultChecked={sup === "new" ? true : sup.active} /> Activo</label>
             <div className="col-span-2"><label className="label">Notas</label><input name="notes" defaultValue={sup === "new" ? "" : (sup.notes ?? "")} className="input" /></div>
+            <fieldset className="col-span-2 grid grid-cols-2 gap-3 rounded-xl border border-stone-line p-3">
+              <legend className="px-1 text-xs font-semibold text-charcoal/70">Consignación</legend>
+              <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" name="is_consignment" defaultChecked={sup !== "new" && sup.is_consignment} /> Trabaja en consignación (se le paga lo vendido)</label>
+              <div><label className="label">% que se queda el negocio</label><input name="commission_pct" type="number" step="0.01" min={0} max={100} defaultValue={sup === "new" ? 0 : sup.commission_pct} className="input" /></div>
+              <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="show_in_dashboard" defaultChecked={sup !== "new" && sup.show_in_dashboard} /> Mostrar en el dashboard</label>
+              <p className="col-span-2 text-xs text-charcoal/60">El porcentaje aplica a las ventas nuevas. Lo ya vendido conserva el porcentaje con que se vendió.</p>
+            </fieldset>
           </form>
         </Modal>
       )}

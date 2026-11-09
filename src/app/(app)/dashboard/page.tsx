@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell, AreaChart, Area,
 } from "recharts";
-import { TrendingUp, Utensils, Shirt, Receipt, ClipboardList, ChefHat, Bike, LayoutGrid, AlertTriangle, Wallet } from "lucide-react";
+import Link from "next/link";
+import { TrendingUp, Utensils, Shirt, Receipt, ClipboardList, ChefHat, Bike, LayoutGrid, AlertTriangle, Wallet, HandCoins, Store } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { money, num, daysAgo, today, errMsg } from "@/lib/format";
@@ -25,7 +26,9 @@ type Dash = {
   by_unit_method?: UnitMethodRow[];
   by_method: { name: string; total: number }[];
   by_employee: { name: string; orders: number; total: number }[];
+  featured_suppliers?: { id: string; name: string; commission_pct: number; sales_range: number; owed_range: number; commission_range: number; balance: number }[];
 };
+type OutletRow = { id: string; name: string; on_hand: number; balance: number; receivable_range: number; sales_range: number };
 
 const short = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 const tip = { contentStyle: { borderRadius: 12, border: "1px solid #E7E2D8", fontSize: 12 }, formatter: (v: unknown) => money(Number(v)) };
@@ -42,11 +45,19 @@ export default function DashboardPage() {
   const [to, setTo] = useState(today());
   const [unit, setUnit] = useState("");
   const [d, setD] = useState<Dash | null>(null);
+  const [outlets, setOutlets] = useState<OutletRow[] | null>(null);
+  const brand = current?.business.profile === "brand";
 
   const load = useCallback(async () => {
     const { data, error } = await supabaseBrowser().rpc("dashboard_summary", { p_business: businessId, p_from: from, p_to: to, p_unit: unit || null });
     if (error) toast("error", errMsg(error)); else setD(data as Dash);
-  }, [businessId, from, to, unit, toast]);
+    if (brand) {
+      const tz = "T00:00:00-05:00";
+      const end = new Date(new Date(to + tz).getTime() + 86400000).toISOString();
+      const o = await supabaseBrowser().rpc("outlet_summary", { p_business: businessId, p_from: new Date(from + tz).toISOString(), p_to: end });
+      if (!o.error) setOutlets(o.data as OutletRow[]);
+    }
+  }, [businessId, from, to, unit, toast, brand]);
 
   useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [load]);
 
@@ -81,11 +92,33 @@ export default function DashboardPage() {
         <Stat label={unitName("gastronomy")} value={money(d.gastronomy_range)} hint="En el período" icon={<Utensils size={18} />} />
         <Stat label={unitName("shop")} value={money(d.shop_range)} hint="En el período" icon={<Shirt size={18} />} />
         <Stat label="Resultado estimado" value={money(profit)} hint={`Gastos: ${money(d.expenses_range)} · hoy ${money(d.expenses_today)}`} icon={<Receipt size={18} />} />
-        <Stat label="Pedidos activos" value={num(d.active_orders)} icon={<ClipboardList size={18} />} />
-        <Stat label="Pendientes de cocina" value={num(d.kitchen_pending)} icon={<ChefHat size={18} />} />
-        <Stat label="Domicilios en curso" value={num(d.deliveries_active)} icon={<Bike size={18} />} />
-        <Stat label="Mesas ocupadas" value={`${d.tables_occupied} / ${d.tables_total}`} icon={<LayoutGrid size={18} />} />
+        {brand ? (<>
+          <Stat label="Por cobrar a aliados" value={money((outlets ?? []).reduce((s, o) => s + Number(o.balance), 0))} hint={`${(outlets ?? []).length} establecimientos`} icon={<Store size={18} />} />
+          <Stat label="Ventas reportadas por aliados" value={money((outlets ?? []).reduce((s, o) => s + Number(o.sales_range), 0))} hint="En el período" icon={<TrendingUp size={18} />} />
+          <Stat label="Unidades en aliados" value={num((outlets ?? []).reduce((s, o) => s + Number(o.on_hand), 0))} hint="Entregadas sin vender" icon={<Shirt size={18} />} />
+          <Stat label="Pedidos activos" value={num(d.active_orders)} icon={<ClipboardList size={18} />} />
+        </>) : (<>
+          <Stat label="Pedidos activos" value={num(d.active_orders)} icon={<ClipboardList size={18} />} />
+          <Stat label="Pendientes de cocina" value={num(d.kitchen_pending)} icon={<ChefHat size={18} />} />
+          <Stat label="Domicilios en curso" value={num(d.deliveries_active)} icon={<Bike size={18} />} />
+          <Stat label="Mesas ocupadas" value={`${d.tables_occupied} / ${d.tables_total}`} icon={<LayoutGrid size={18} />} />
+        </>)}
       </div>
+
+      {(d.featured_suppliers ?? []).length > 0 && (
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {d.featured_suppliers!.map((s) => (
+            <Link key={s.id} href="/consignacion" className="card flex items-center gap-4 p-4 transition hover:!border-burgundy/40">
+              <HandCoins className="text-burgundy" />
+              <div className="flex-1 text-sm">
+                <div className="font-medium">{s.name} <span className="font-normal text-charcoal/50">· proveedor en consignación ({num(s.commission_pct, 2)} %)</span></div>
+                <div className="text-charcoal/70">En el período vendió {money(s.sales_range)}: le corresponden {money(s.owed_range)} y quedan {money(s.commission_range)} de comisión.</div>
+              </div>
+              <div className="text-right"><div className="text-xs text-charcoal/60">Por pagar</div><div className="font-display text-xl text-burgundy">{money(s.balance)}</div></div>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="card flex items-center gap-4 p-4">

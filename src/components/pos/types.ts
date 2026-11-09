@@ -1,7 +1,7 @@
 export type OrderItem = {
   id: string; order_id: string; product_id: string; variant_id: string | null; business_unit_id: string; station_id: string | null;
   ticket_id: string | null; name: string; variant_label: string | null; qty: number; unit_price: number; modifiers: { name: string }[];
-  notes: string | null; discount: number; line_total: number; commission_pct?: number; status: "active" | "voided"; void_reason: string | null; stock_applied: boolean;
+  notes: string | null; discount: number; line_total: number; commission_pct?: number; consignment_supplier_id?: string | null; status: "active" | "voided"; void_reason: string | null; stock_applied: boolean;
 };
 export type Payment = { id: string; amount: number; status: string; reference: string | null; change_amount: number; received_amount: number | null; created_at: string; method_id: string; payment_methods: { name: string } | null };
 export type Order = {

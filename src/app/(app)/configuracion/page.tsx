@@ -10,7 +10,7 @@ import { LogoMark } from "@/components/brand/logo";
 import { useToast } from "@/components/ui/toast";
 
 type Biz = Record<string, unknown> & { id: string; name: string; slug: string; logo_url: string | null; opening_hours: Record<string, string>; brand_colors: Record<string, string> };
-const TABS = [["general", "Establecimiento"], ["ops", "Operación"], ["tables", "Mesas"], ["stations", "Estaciones"], ["payments", "Métodos de pago"], ["zones", "Domicilios y cobertura"], ["notifications", "Notificaciones"]] as const;
+const TABS = [["general", "Establecimiento"], ["ops", "Operación"], ["tables", "Mesas"], ["stations", "Estaciones"], ["payments", "Métodos de pago"], ["zones", "Domicilios y cobertura"], ["notifications", "Notificaciones"], ["accounts", "Otros negocios"]] as const;
 const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
 export default function SettingsPage() {
@@ -86,8 +86,7 @@ export default function SettingsPage() {
           e.preventDefault(); const f = new FormData(e.currentTarget);
           await saveBiz({ inventory_policy: f.get("policy"), tip_suggested_pct: Number(f.get("tip")), delivery_enabled: f.get("delivery") === "on", pickup_enabled: f.get("pickup") === "on",
             loyalty_enabled: f.get("loyalty") === "on", loyalty_points_per_1000: Number(f.get("points")),
-            loyalty_point_value: Number(f.get("point_value")), loyalty_min_redeem: Number(f.get("min_redeem")),
-            shop_commission_pct: Number(f.get("commission")) });
+            loyalty_point_value: Number(f.get("point_value")), loyalty_min_redeem: Number(f.get("min_redeem")) });
           const g = units.find((u) => u.kind === "gastronomy"), s = units.find((u) => u.kind === "shop");
           const pct = Number(f.get("split"));
           const r1 = await sb.from("business_units").update({ shared_expense_pct: pct, name: String(f.get("g_name") || g!.name).trim() }).eq("id", g!.id);
@@ -95,10 +94,8 @@ export default function SettingsPage() {
           if (r1.error || r2.error) toast("error", errMsg(r1.error ?? r2.error)); else { load(); reload(); }
         }}>
           <div><label className="label">Nombre del negocio de comida</label><input name="g_name" defaultValue={gUnit?.name ?? ""} placeholder="Rupícola" className="input" /></div>
-          <div><label className="label">Nombre de la marca de camisas</label><input name="s_name" defaultValue={sUnit?.name ?? ""} placeholder="Mi Tierra" className="input" /></div>
-          <div><label className="label">Comisión de {gUnit?.name ?? "gastronomía"} sobre ventas de {sUnit?.name ?? "la tienda"} (%)</label>
-            <input name="commission" type="number" min={0} max={100} step="0.5" defaultValue={Number(biz.shop_commission_pct ?? 0)} className="input" />
-            <p className="mt-1 text-xs text-charcoal/50">Se descuenta de cada camisa vendida y queda como ingreso del restaurante. El reporte “Liquidación” muestra lo que se le debe a la marca.</p></div>
+          <div><label className="label">Nombre de la tienda</label><input name="s_name" defaultValue={sUnit?.name ?? ""} placeholder="Tienda" className="input" />
+            <p className="mt-1 text-xs text-charcoal/50">Aquí se venden los productos de proveedores en consignación. El % de cada proveedor se define en Compras y proveedores.</p></div>
           <div><label className="label">Descuento de inventario</label><select name="policy" defaultValue={String(biz.inventory_policy)} className="input">
             <option value="on_payment">Al pagar la venta</option><option value="on_confirm">Al confirmar / enviar el pedido</option></select></div>
           <div><label className="label">Propina sugerida %</label><input name="tip" type="number" step="0.5" defaultValue={Number(biz.tip_suggested_pct)} className="input" /></div>
@@ -134,6 +131,7 @@ export default function SettingsPage() {
         blank={{ fee: 0, min_order: 0, eta_minutes: 45, active: true }}
         note="Cobertura por radio desde un punto (centro). Si no hay zonas, se acepta cualquier dirección y el costo se define al confirmar el pedido." />}
       {tab === "notifications" && <Notifications businessId={businessId} />}
+      {tab === "accounts" && <ExtraBusiness />}
     </div>
   );
 }
@@ -189,6 +187,43 @@ function Notifications({ businessId }: { businessId: string }) {
           <td><span className={clsx("chip", r.status === "sent" ? "bg-emerald-50 text-emerald-800" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-sand-50")}>{({ pending: "Pendiente", sent: "Enviado", failed: "Fallido", skipped: "Omitido" } as Record<string, string>)[r.status]}</span>
             {r.last_error && <div className="text-[10px] text-charcoal/50">{r.last_error.slice(0, 80)}</div>}</td></tr>)}</tbody></table>
       <span className="hidden">{money(0)}</span>
+    </div>
+  );
+}
+
+/** Crea una cuenta separada (p. ej. Mi Tierra como marca) que se cambia desde el selector del menú */
+function ExtraBusiness() {
+  const sb = supabaseBrowser();
+  const toast = useToast();
+  const { memberships, reload, switchBusiness } = useApp();
+  const [busy, setBusy] = useState(false);
+  const slugify = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <form className="card space-y-3 p-5" onSubmit={async (e) => {
+        e.preventDefault(); const f = new FormData(e.currentTarget);
+        const name = String(f.get("name") || "").trim(); if (!name) return;
+        setBusy(true);
+        const { data, error } = await sb.rpc("create_extra_business", { p_name: name, p_slug: slugify(String(f.get("slug") || name)), p_profile: String(f.get("profile")) });
+        setBusy(false);
+        if (error) return toast("error", errMsg(error).includes("duplicate") ? "Ya existe un negocio con ese enlace; cambie el identificador" : errMsg(error));
+        toast("success", `${name} creado. Ya puede cambiar de negocio desde el menú.`);
+        await reload(); switchBusiness(String(data));
+      }}>
+        <h3 className="font-medium">Crear otro negocio</h3>
+        <p className="text-sm text-charcoal/60">Cada negocio lleva su propio inventario, gastos, caja y reportes, sin mezclarse con los demás. Usted queda como administrador y cambia entre ellos con el selector del menú.</p>
+        <div><label className="label">Nombre</label><input name="name" required placeholder="Mi Tierra" className="input" /></div>
+        <div><label className="label">Identificador del enlace</label><input name="slug" placeholder="mi-tierra" className="input" /></div>
+        <div><label className="label">Tipo</label><select name="profile" className="input" defaultValue="brand">
+          <option value="brand">Marca que lleva productos a establecimientos aliados</option>
+          <option value="restaurant">Restaurante o local con tienda</option></select></div>
+        <button className="btn-primary" disabled={busy}><Plus size={16} /> Crear negocio</button>
+      </form>
+      <div className="card p-5">
+        <h3 className="mb-2 font-medium">Mis negocios</h3>
+        <ul className="space-y-2 text-sm">{memberships.map((m) => <li key={m.business.id} className="flex justify-between rounded-lg bg-sand-50 px-3 py-2">
+          <span>{m.business.name}</span><span className="text-charcoal/60">{m.business.profile === "brand" ? "Marca con aliados" : "Restaurante"} · {m.role.name}</span></li>)}</ul>
+      </div>
     </div>
   );
 }

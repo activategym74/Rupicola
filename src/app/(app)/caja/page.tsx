@@ -78,7 +78,7 @@ export default function CashPage() {
                 <div className="text-xl font-semibold">{s.closed_at ? `${money(s.counted_cash)} · ${money(s.difference)}` : "Abierta"}</div></div>
             </div>
             <div className="card p-4"><div className="label mb-2">Por negocio y medio de pago</div><UnitMethodTable rows={sum.by_unit_method ?? []} />
-              <p className="mt-2 text-xs text-charcoal/50">Cada pago se reparte entre los negocios según lo que se vendió de cada uno. La comisión de las camisas ya queda del lado del restaurante.</p></div>
+              <p className="mt-2 text-xs text-charcoal/50">Cada pago se reparte entre los negocios según lo que se vendió de cada uno. Lo vendido de proveedores en consignación queda en “Por pagar a proveedores”.</p></div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="card p-4"><div className="label">Por método de pago</div>{sum.by_method.map((m) => <div key={m.method} className="flex justify-between py-0.5 text-sm"><span>{m.method}</span><span>{money(m.total)}</span></div>)}</div>
               <div className="card p-4"><div className="label">Por unidad de negocio</div>{sum.by_unit.map((m) => <div key={m.unit} className="flex justify-between py-0.5 text-sm"><span>{m.unit}</span><span>{money(m.total)}</span></div>)}</div>
