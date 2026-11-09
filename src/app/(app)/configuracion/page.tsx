@@ -8,6 +8,7 @@ import { money, dateTime, errMsg } from "@/lib/format";
 import { PageHeader, PageLoader } from "@/components/ui/bits";
 import { LogoMark } from "@/components/brand/logo";
 import { useToast } from "@/components/ui/toast";
+import { Modal } from "@/components/ui/modal";
 
 type Biz = Record<string, unknown> & { id: string; name: string; slug: string; logo_url: string | null; opening_hours: Record<string, string>; brand_colors: Record<string, string> };
 const TABS = [["general", "Establecimiento"], ["ops", "Operación"], ["tables", "Mesas"], ["stations", "Estaciones"], ["payments", "Métodos de pago"], ["zones", "Domicilios y cobertura"], ["notifications", "Notificaciones"], ["accounts", "Otros negocios"]] as const;
@@ -195,8 +196,9 @@ function Notifications({ businessId }: { businessId: string }) {
 function ExtraBusiness() {
   const sb = supabaseBrowser();
   const toast = useToast();
-  const { memberships, reload, switchBusiness } = useApp();
+  const { memberships, reload, switchBusiness, businessId } = useApp();
   const [busy, setBusy] = useState(false);
+  const [drop, setDrop] = useState<{ id: string; name: string } | null>(null);
   const slugify = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -221,9 +223,32 @@ function ExtraBusiness() {
       </form>
       <div className="card p-5">
         <h3 className="mb-2 font-medium">Mis negocios</h3>
-        <ul className="space-y-2 text-sm">{memberships.map((m) => <li key={m.business.id} className="flex justify-between rounded-lg bg-sand-50 px-3 py-2">
-          <span>{m.business.name}</span><span className="text-charcoal/60">{m.business.profile === "brand" ? "Marca con aliados" : "Restaurante"} · {m.role.name}</span></li>)}</ul>
+        <ul className="space-y-2 text-sm">{memberships.map((m) => <li key={m.business.id} className="flex items-center justify-between gap-2 rounded-lg bg-sand-50 px-3 py-2">
+          <span className="flex-1">{m.business.name}</span><span className="text-charcoal/60">{m.business.profile === "brand" ? "Marca con aliados" : "Restaurante"} · {m.role.name}</span>
+          {memberships.length > 1 && m.role.code === "admin" && <button className="btn-ghost !p-1.5 text-red-700" title="Quitar negocio" onClick={() => setDrop({ id: m.business.id, name: m.business.name })}><Trash2 size={15} /></button>}
+        </li>)}</ul>
+        <p className="mt-3 text-xs text-charcoal/60">¿Solo se equivocó en el nombre? Cámbielo en la pestaña Establecimiento estando en ese negocio. Quitar un negocio lo archiva: deja de aparecer, pero su historial se conserva.</p>
       </div>
+      {drop && (
+        <Modal open onClose={() => setDrop(null)} title={`Quitar ${drop.name}`}
+          footer={<><button className="btn-secondary" onClick={() => setDrop(null)}>Cancelar</button><button className="btn-danger" form="dropbiz" disabled={busy}>Quitar negocio</button></>}>
+          <form id="dropbiz" className="space-y-3" onSubmit={async (e) => {
+            e.preventDefault(); const f = new FormData(e.currentTarget);
+            setBusy(true);
+            const { error } = await sb.rpc("business_archive", { p_business: drop.id, p_confirm_name: String(f.get("confirm") || "") });
+            setBusy(false);
+            if (error) return toast("error", errMsg(error));
+            toast("success", `${drop.name} se quitó`);
+            const next = memberships.find((m) => m.business.id !== drop.id);
+            setDrop(null);
+            if (drop.id === businessId && next) switchBusiness(next.business.id);
+            await reload();
+          }}>
+            <p className="text-sm text-charcoal/70">Dejará de aparecer para todos sus usuarios. No se borra ninguna venta, pago ni movimiento.</p>
+            <div><label className="label">Escriba <b>{drop.name}</b> para confirmar</label><input name="confirm" required autoComplete="off" className="input" /></div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

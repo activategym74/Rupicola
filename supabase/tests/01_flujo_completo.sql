@@ -431,6 +431,19 @@ select outlet_payment_void(:'op1', 'Consignación rebotada');
 select pg_temp.check(outlet_balance(:'ol_r') = 270000, 'anular el abono vuelve a 270.000 por cobrar');
 select pg_temp.check((outlet_detail(:'ol_r')->>'balance')::numeric = 270000, 'detalle del aliado');
 select pg_temp.check(exists (select 1 from jsonb_array_elements(my_context()) x where x->'business'->>'profile' = 'brand' and x->'business'->>'slug' = 'mi-tierra'), 'el contexto informa el perfil de marca');
+select create_extra_business('Chocolatez', 'chocolatez', 'brand') as bch \gset
+select set_config('test.bch', :'bch', false);
+do $$ begin
+  perform business_archive(current_setting('test.bch')::uuid, 'otro nombre');
+  raise exception 'debió fallar';
+exception when others then if sqlerrm = 'debió fallar' then raise; end if; raise notice 'ok · pide el nombre exacto para quitar (%)', sqlerrm; end $$;
+select business_archive(:'bch', 'chocolatez');
+select pg_temp.check(not exists (select 1 from jsonb_array_elements(my_context()) x where x->'business'->>'slug' = 'chocolatez')
+  and exists (select 1 from jsonb_array_elements(my_context()) x where x->'business'->>'slug' = 'rupicola'), 'negocio creado por error queda oculto; los demás siguen');
+reset role;
+select pg_temp.check((select archived_at is not null from businesses where id = :'bch'), 'el negocio queda archivado, no borrado');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
 reset role;
 
 -- ===== Aislamiento entre establecimientos
