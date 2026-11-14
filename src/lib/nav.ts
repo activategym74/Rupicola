@@ -1,22 +1,25 @@
 import {
   LayoutDashboard, ShoppingCart, LayoutGrid, ChefHat, Bike, Package, Boxes, Truck, Users, Wallet,
-  Receipt, BarChart3, ShieldCheck, UserCog, Settings, Navigation,
+  Receipt, BarChart3, ShieldCheck, UserCog, Settings, Navigation, HandCoins, Store,
 } from "lucide-react";
+import type { BusinessProfile } from "./types";
 
-export type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number }>; perm: string | string[] };
+export type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number }>; perm: string | string[]; /** Solo para estos tipos de negocio (por defecto, todos) */ profiles?: BusinessProfile[] };
 export const NAV: { section: string; items: NavItem[] }[] = [
   { section: "Operación", items: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perm: "dashboard.view" },
     { href: "/pos", label: "Punto de venta", icon: ShoppingCart, perm: "pos.sell" },
-    { href: "/mesas", label: "Mesas", icon: LayoutGrid, perm: "tables.view" },
-    { href: "/cocina", label: "Cocina · Bar · Café", icon: ChefHat, perm: ["kds.kitchen", "kds.bar", "kds.cafe"] },
-    { href: "/domicilios", label: "Domicilios", icon: Bike, perm: "delivery.manage" },
-    { href: "/domiciliario", label: "Mis entregas", icon: Navigation, perm: "delivery.courier" },
+    { href: "/mesas", label: "Mesas", icon: LayoutGrid, perm: "tables.view", profiles: ["restaurant"] },
+    { href: "/cocina", label: "Cocina · Bar · Café", icon: ChefHat, perm: ["kds.kitchen", "kds.bar", "kds.cafe"], profiles: ["restaurant"] },
+    { href: "/domicilios", label: "Domicilios", icon: Bike, perm: "delivery.manage", profiles: ["restaurant"] },
+    { href: "/domiciliario", label: "Mis entregas", icon: Navigation, perm: "delivery.courier", profiles: ["restaurant"] },
   ]},
   { section: "Negocio", items: [
     { href: "/catalogo", label: "Catálogo", icon: Package, perm: "catalog.manage" },
     { href: "/inventario", label: "Inventario", icon: Boxes, perm: "inventory.view" },
+    { href: "/aliados", label: "Establecimientos aliados", icon: Store, perm: "inventory.view", profiles: ["brand"] },
     { href: "/compras", label: "Compras y proveedores", icon: Truck, perm: "purchases.manage" },
+    { href: "/consignacion", label: "Por pagar a proveedores", icon: HandCoins, perm: "purchases.manage", profiles: ["restaurant"] },
     { href: "/clientes", label: "Clientes", icon: Users, perm: "customers.view" },
   ]},
   { section: "Finanzas", items: [

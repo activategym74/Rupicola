@@ -26,17 +26,16 @@ export function PaymentModal({ order, open, onClose, onDone, onRefresh, methods,
   const due = Number(order.total) + Number(tip || 0) - Number(order.paid_total);
   const sum = lines.reduce((s, l) => s + Number(l.amount || 0), 0);
   const remaining = due - sum;
-  const gastroId = units.find((u) => u.kind === "gastronomy")?.id;
   const byUnit = useMemo(() => {
     const m: Record<string, number> = {};
     order.order_items.filter((i) => i.status === "active").forEach((i) => {
-      const fee = Math.round(Number(i.line_total) * Number(i.commission_pct ?? 0)) / 100;
-      m[i.business_unit_id] = (m[i.business_unit_id] ?? 0) + Number(i.line_total) - fee;
-      if (fee > 0 && gastroId) m[gastroId] = (m[gastroId] ?? 0) + fee;
+      m[i.business_unit_id] = (m[i.business_unit_id] ?? 0) + Number(i.line_total);
     });
     return m;
-  }, [order, gastroId]);
-  const commission = order.order_items.filter((i) => i.status === "active").reduce((s, i) => s + Math.round(Number(i.line_total) * Number(i.commission_pct ?? 0)) / 100, 0);
+  }, [order]);
+  // Parte de proveedores en consignación: se les paga después (Por pagar a proveedores)
+  const toSuppliers = order.order_items.filter((i) => i.status === "active" && i.consignment_supplier_id)
+    .reduce((s, i) => s + Number(i.line_total) - Math.round(Number(i.line_total) * Number(i.commission_pct ?? 0)) / 100, 0);
   const change = lines.reduce((s, l) => {
     const m = methods.find((x) => x.id === l.method_id);
     return s + (m?.is_cash && l.received ? Math.max(Number(l.received) - Number(l.amount || 0), 0) : 0);
@@ -130,7 +129,7 @@ export function PaymentModal({ order, open, onClose, onDone, onRefresh, methods,
           <div className="border-t border-stone-line pt-2 text-xs text-charcoal/60">
             Distribución interna:
             {Object.entries(byUnit).map(([u, v]) => <div key={u} className="flex justify-between"><span>{units.find((x) => x.id === u)?.name}</span><span>{money(v)}</span></div>)}
-            {commission > 0 && <div className="mt-1 text-[11px]">Incluye {money(commission)} de comisión para {units.find((x) => x.id === gastroId)?.name}.</div>}
+            {toSuppliers > 0 && <div className="mt-1 text-[11px]">De esto, {money(toSuppliers)} corresponde a proveedores en consignación y queda por pagarles.</div>}
           </div>
         </div>
       </div>

@@ -128,6 +128,7 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
   const [groups, setGroups] = useState<ModifierGroup[]>(product?.modifier_groups ?? []);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [busy, setBusy] = useState(false);
+  const [sups, setSups] = useState<{ id: string; name: string; commission_pct: number }[]>([]);
   const cat = categories.find((c) => c.id === p.category_id);
   const kind = units.find((u) => u.id === cat?.business_unit_id)?.kind ?? "gastronomy";
   const tracks = p.track_stock ?? (product ? true : kind !== "shop");
@@ -135,6 +136,8 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
   useEffect(() => {
     sb.from("ingredients").select("id, name, unit, cost_per_unit").eq("business_id", businessId).eq("active", true).order("name")
       .then(({ data }: { data: Ingredient[] | null }) => setIngredients(data ?? []));
+    sb.from("suppliers").select("id, name, commission_pct").eq("business_id", businessId).eq("is_consignment", true).eq("active", true).order("name")
+      .then(({ data }: { data: { id: string; name: string; commission_pct: number }[] | null }) => setSups(data ?? []));
     if (product) sb.from("recipe_items").select("ingredient_id, qty").eq("product_id", product.id).then(({ data }: { data: RRow[] | null }) => setRecipe(data ?? []));
   }, [sb, businessId, product]);
 
@@ -160,6 +163,7 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
       station_id: kind === "shop" ? null : (p.station_id || null),
       stock_mode: kind === "shop" ? "variant" : recipe.length ? "recipe" : "none",
       track_stock: kind === "shop" ? tracks : true,
+      consignment_supplier_id: kind === "shop" ? (p.consignment_supplier_id || null) : null,
     };
     const vlist: VRow[] = kind === "shop" && variants.length === 0 ? [{ _new: true, size: "Única", active: true, min_stock: 0, cost: 0 }] : variants;
     try {
@@ -233,8 +237,13 @@ function ProductEditor({ product, categories, stations, onClose, onSaved }: { pr
         <section className="mt-6">
           <div className="mb-2 flex items-center justify-between"><h3 className="font-medium">Variantes (talla · color · diseño)</h3>
             <button className="btn-ghost !py-1 text-sm" onClick={() => setVariants((s) => [...s, { _new: true, active: true, stock: 0, min_stock: 0, cost: 0 }])}><Plus size={14} /> Variante</button></div>
+          <div className="mb-3 max-w-md"><label className="label">Proveedor en consignación</label>
+            <select className="input" value={p.consignment_supplier_id ?? ""} onChange={(e) => set("consignment_supplier_id", e.target.value || null)}>
+              <option value="">Ninguno (producto propio)</option>
+              {sups.map((s) => <option key={s.id} value={s.id}>{s.name} · {Number(s.commission_pct)} % para el negocio</option>)}</select>
+            <p className="mt-1 text-xs text-charcoal/50">Si es de un proveedor, cada venta suma a lo que se le debe (precio menos su %). Los proveedores se configuran en Compras y proveedores.</p></div>
           <label className="mb-2 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={tracks} onChange={(e) => set("track_stock", e.target.checked)} />
-            <span>Controlar existencias<span className="block text-xs text-charcoal/50">Desmarcado: se vende aunque no haya unidades cargadas en inventario (consignación de {units.find((u) => u.kind === "shop")?.name ?? "la marca"}). Si no agrega variantes se crea la talla “Única”.</span></span></label>
+            <span>Controlar existencias<span className="block text-xs text-charcoal/50">Desmarcado: se vende aunque no haya unidades cargadas en inventario (útil si aún no registró la mercancía recibida). Si no agrega variantes se crea la talla “Única”.</span></span></label>
           <div className="overflow-x-auto"><table className="table-base"><thead><tr><th>Talla</th><th>Color</th><th>Diseño</th><th>Referencia</th><th>Cód. barras</th><th>Precio</th><th>Mín.</th><th>Existencia</th></tr></thead>
             <tbody>{variants.map((v, i) => {
               const up = (k: keyof VRow, val: string) => setVariants((s) => s.map((x, j) => j === i ? { ...x, [k]: val } : x));

@@ -26,12 +26,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
   if (!current) return <PageLoader />;
 
-  const allowed = (perm: string | string[]) => (Array.isArray(perm) ? perm.some(can) : can(perm));
+  const profile = current.business.profile ?? "restaurant";
+  const allowed = (perm: string | string[], profiles?: string[]) =>
+    (!profiles || profiles.includes(profile)) && (Array.isArray(perm) ? perm.some(can) : can(perm));
   // Protección de rutas: un usuario solo abre los módulos que su rol permite
   const items = NAV.flatMap((s) => s.items);
   const route = items.find((i) => path === i.href || path.startsWith(i.href + "/"));
-  const blocked = !!route && !allowed(route.perm);
-  const home = items.find((i) => allowed(i.perm))?.href ?? null;
+  const blocked = !!route && !allowed(route.perm, route.profiles);
+  const home = items.find((i) => allowed(i.perm, i.profiles))?.href ?? null;
   const logout = async () => {
     await supabaseBrowser().rpc("log_activity", { b: businessId, p_action: "logout" });
     await supabaseBrowser().auth.signOut();
@@ -51,7 +53,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       )}
       <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {NAV.map((sec) => {
-          const items = sec.items.filter((i) => allowed(i.perm));
+          const items = sec.items.filter((i) => allowed(i.perm, i.profiles));
           if (!items.length) return null;
           return (
             <div key={sec.section}>

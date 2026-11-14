@@ -1,7 +1,9 @@
 export type UnitKind = "gastronomy" | "shop";
+/** restaurant = restaurante con tienda; brand = marca que lleva productos a establecimientos aliados */
+export type BusinessProfile = "restaurant" | "brand";
 export type Unit = { id: string; kind: UnitKind; name: string };
 export type Membership = {
-  business: { id: string; name: string; slug: string; logo_url: string | null; timezone: string; currency: string };
+  business: { id: string; name: string; slug: string; logo_url: string | null; timezone: string; currency: string; profile?: BusinessProfile };
   member: { id: string; full_name: string };
   role: { id: string; code: string; name: string };
   permissions: string[];
@@ -15,7 +17,7 @@ export type Product = {
   id: string; business_unit_id: string; category_id: string; station_id: string | null; sku: string | null; barcode: string | null;
   name: string; description: string | null; ingredients_text: string | null; price: number; tax_rate: number;
   image_url: string | null; model_3d_url: string | null; is_featured: boolean; is_recommended: boolean; is_available: boolean;
-  stock_mode: "recipe" | "variant" | "none"; sort: number; active: boolean; track_stock?: boolean;
+  stock_mode: "recipe" | "variant" | "none"; sort: number; active: boolean; track_stock?: boolean; consignment_supplier_id?: string | null;
   product_variants?: Variant[]; modifier_groups?: ModifierGroup[];
 };
 export type CartLine = {
