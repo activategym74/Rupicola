@@ -129,6 +129,19 @@ select (:'qr'::jsonb->>'order_id') as o2 \gset
 select pg_temp.check((select total from orders where id = :'o2') = 62000, 'QR: 2 hamburguesas con extra queso = 62.000');
 select pg_temp.check((select status from dining_tables where id = :'mesa1') = 'needs_attention', 'mesa solicita atención');
 
+-- Menú QR "solo para ver": el cliente ve el menú pero no puede pedir; el mesero sí
+select pg_temp.check((public_table(:'tok')->>'ordering')::boolean, 'QR permite pedir por defecto');
+update businesses set qr_ordering_enabled = false where id = :'b';
+select pg_temp.check(not (public_table(:'tok')->>'ordering')::boolean, 'QR informa que es solo para ver');
+select set_config('prueba.tok', :'tok', false);
+set role anon;
+do $$ begin
+  perform qr_place_order(current_setting('prueba.tok'), '[]'::jsonb, null);
+  raise exception 'debió fallar';
+exception when others then if sqlerrm = 'debió fallar' then raise; end if; raise notice 'ok · QR solo para ver bloquea pedidos (%)', sqlerrm; end $$;
+reset role;
+update businesses set qr_ordering_enabled = true where id = :'b';
+
 -- Cocina procesa (permiso kds.kitchen)
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
 set role authenticated;

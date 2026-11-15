@@ -8,7 +8,8 @@ import { Product3D } from "./model-viewer";
 import type { PubMenu, PubProduct, PubLine } from "./types";
 
 /** Catálogo público: categorías, destacados, detalle con fotos/3D, variantes y personalización. */
-export function PublicMenu({ menu, onAdd }: { menu: PubMenu; onAdd: (l: PubLine) => void }) {
+/** Sin `onAdd` el menú queda solo para ver (sin carrito). */
+export function PublicMenu({ menu, onAdd }: { menu: PubMenu; onAdd?: (l: PubLine) => void }) {
   const [cat, setCat] = useState<string>("");
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<PubProduct | null>(null);
@@ -71,12 +72,12 @@ export function PublicMenu({ menu, onAdd }: { menu: PubMenu; onAdd: (l: PubLine)
         );
       })}
 
-      {detail && <ProductDetail product={detail} unit={unitOf(detail.category_id)} onClose={() => setDetail(null)} onAdd={(l) => { onAdd(l); setDetail(null); }} />}
+      {detail && <ProductDetail product={detail} unit={unitOf(detail.category_id)} onClose={() => setDetail(null)} onAdd={onAdd ? (l) => { onAdd(l); setDetail(null); } : undefined} />}
     </div>
   );
 }
 
-function ProductDetail({ product: p, unit, onClose, onAdd }: { product: PubProduct; unit: "gastronomy" | "shop"; onClose: () => void; onAdd: (l: PubLine) => void }) {
+function ProductDetail({ product: p, unit, onClose, onAdd }: { product: PubProduct; unit: "gastronomy" | "shop"; onClose: () => void; onAdd?: (l: PubLine) => void }) {
   const [variantId, setVariantId] = useState(p.variants.find((v) => v.available)?.id ?? "");
   const [opts, setOpts] = useState<string[]>([]);
   const [qty, setQty] = useState(1);
@@ -93,7 +94,7 @@ function ProductDetail({ product: p, unit, onClose, onAdd }: { product: PubProdu
 
   return (
     <Modal open onClose={onClose} title={p.name}
-      footer={<button className="btn-primary w-full" disabled={!!invalid || needVariant}
+      footer={onAdd && <button className="btn-primary w-full" disabled={!!invalid || needVariant}
         onClick={() => onAdd({ key: [p.id, variantId, ...opts.sort(), notes].join("|"), product_id: p.id, variant_id: v?.id, name: p.name,
           detail: [v && [v.size, v.color, v.design].filter(Boolean).join(" / "), all.filter((o) => opts.includes(o.id)).map((o) => o.name).join(", "), notes].filter(Boolean).join(" · "),
           qty, unit_price: price, option_ids: opts, notes: notes || undefined, unit })}>
@@ -136,12 +137,12 @@ function ProductDetail({ product: p, unit, onClose, onAdd }: { product: PubProdu
           </div>
         </div>
       ))}
-      {unit === "gastronomy" && <textarea className="input mt-4" rows={2} maxLength={300} placeholder="Observaciones (ej: sin cebolla, bien cocida)" value={notes} onChange={(e) => setNotes(e.target.value)} />}
-      <div className="mt-4 flex items-center justify-center gap-4">
+      {onAdd && unit === "gastronomy" && <textarea className="input mt-4" rows={2} maxLength={300} placeholder="Observaciones (ej: sin cebolla, bien cocida)" value={notes} onChange={(e) => setNotes(e.target.value)} />}
+      {onAdd && <div className="mt-4 flex items-center justify-center gap-4">
         <button className="btn-secondary !p-2" onClick={() => setQty(Math.max(1, qty - 1))} aria-label="Menos"><Minus size={16} /></button>
         <span className="text-lg font-semibold">{qty}</span>
         <button className="btn-secondary !p-2" onClick={() => setQty(qty + 1)} aria-label="Más"><Plus size={16} /></button>
-      </div>
+      </div>}
     </Modal>
   );
 }

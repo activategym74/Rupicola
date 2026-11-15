@@ -19,7 +19,7 @@ export default function TableMenu({ params }: { params: Promise<{ token: string 
   const { token } = use(params);
   const sb = supabaseBrowser();
   const toast = useToast();
-  const [table, setTable] = useState<{ number: number; slug: string } | null | undefined>(undefined);
+  const [table, setTable] = useState<{ number: number; slug: string; ordering?: boolean } | null | undefined>(undefined);
   const [menu, setMenu] = useState<PubMenu | null>(null);
   const cart = useCart(`rupicola.qr.${token}`);
   const [sheet, setSheet] = useState<null | "cart" | "status">(null);
@@ -28,7 +28,7 @@ export default function TableMenu({ params }: { params: Promise<{ token: string 
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    sb.rpc("public_table", { p_token: token }).then(async ({ data }: { data: { number: number; slug: string } | null }) => {
+    sb.rpc("public_table", { p_token: token }).then(async ({ data }: { data: { number: number; slug: string; ordering?: boolean } | null }) => {
       setTable(data ?? null);
       if (data) { const m = await sb.rpc("public_menu", { p_slug: data.slug }); setMenu(m.data as PubMenu); }
     });
@@ -57,6 +57,8 @@ export default function TableMenu({ params }: { params: Promise<{ token: string 
   if (table === undefined || (table && !menu)) return <PageLoader />;
   if (table === null) return <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center"><Logo size={48} /><p>Este código QR no es válido. Pide ayuda al personal.</p></div>;
 
+  const ordering = table.ordering !== false;
+
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 pb-28">
       <header className="flex items-center justify-between py-4">
@@ -69,9 +71,16 @@ export default function TableMenu({ params }: { params: Promise<{ token: string 
         <QuickBtn icon={<HelpCircle size={18} />} label="Asistencia" onClick={() => request("assistance", "Asistencia")} />
         <QuickBtn icon={<Receipt size={18} />} label="Pedir la cuenta" onClick={() => request("bill", "Cuenta")} />
       </div>
+      {!ordering && (
+        <div className="card mb-4 flex items-center gap-3 !border-sand bg-sand-50 p-3 text-sm">
+          <BellRing size={20} className="shrink-0 text-burgundy" />
+          <span className="flex-1">Mira el menú con calma. Cuando estés listo, <b>llama al mesero</b> y él toma tu pedido.</span>
+          <button className="btn-primary !px-3 !py-1.5 text-xs" onClick={() => request("call_waiter", "Mesero")}>Llamar</button>
+        </div>
+      )}
       <button className="btn-secondary mb-4 w-full" onClick={() => setSheet("status")}><ClipboardList size={16} /> Estado de mi pedido</button>
-      <PublicMenu menu={menu!} onAdd={(l) => { cart.add(l); toast("success", `${l.name} agregado`); }} />
-      <CartBar count={cart.count} total={cart.total} onOpen={() => setSheet("cart")} />
+      <PublicMenu menu={menu!} onAdd={ordering ? (l) => { cart.add(l); toast("success", `${l.name} agregado`); } : undefined} />
+      {ordering && <CartBar count={cart.count} total={cart.total} onOpen={() => setSheet("cart")} />}
 
       <Modal open={sheet === "cart"} onClose={() => setSheet(null)} title="Tu pedido"
         footer={<button className="btn-primary w-full" disabled={busy || cart.count === 0} onClick={confirm}>{busy ? "Enviando…" : `Confirmar pedido · ${money(cart.total)}`}</button>}>

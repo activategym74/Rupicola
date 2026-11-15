@@ -170,7 +170,7 @@ export default function TablesPage() {
           footer={<a className="btn-primary" href={qr.img} download={`mesa-${qr.t.number}-qr.png`}>Descargar PNG</a>}>
           <div className="flex flex-col items-center text-center">
             <img src={qr.img} alt={`Código QR mesa ${qr.t.number}`} className="w-64" />
-            <p className="mt-2 font-display text-xl">Escanea y pide desde tu celular</p>
+            <p className="mt-2 font-display text-xl">Escanea para ver el menú</p>
             <p className="mt-1 break-all text-xs text-charcoal/50">{qr.url}</p>
           </div>
         </Modal>
