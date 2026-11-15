@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, ShoppingCart, LayoutGrid, ChefHat, Bike, Package, Boxes, Truck, Users, Wallet,
-  Receipt, BarChart3, ShieldCheck, UserCog, Settings, Navigation, HandCoins, Store,
+  Receipt, BarChart3, ShieldCheck, UserCog, Settings, Navigation, HandCoins, Store, HandPlatter,
 } from "lucide-react";
 import type { BusinessProfile } from "./types";
 
@@ -9,6 +9,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
   { section: "Operación", items: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perm: "dashboard.view" },
     { href: "/pos", label: "Punto de venta", icon: ShoppingCart, perm: "pos.sell" },
+    { href: "/mesero", label: "Modo mesero", icon: HandPlatter, perm: "tables.manage", profiles: ["restaurant"] },
     { href: "/mesas", label: "Mesas", icon: LayoutGrid, perm: "tables.view", profiles: ["restaurant"] },
     { href: "/cocina", label: "Cocina · Bar · Café", icon: ChefHat, perm: ["kds.kitchen", "kds.bar", "kds.cafe"], profiles: ["restaurant"] },
     { href: "/domicilios", label: "Domicilios", icon: Bike, perm: "delivery.manage", profiles: ["restaurant"] },

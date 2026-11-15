@@ -86,6 +86,7 @@ export default function SettingsPage() {
         <form className="card grid gap-4 p-5 sm:grid-cols-2" onSubmit={async (e) => {
           e.preventDefault(); const f = new FormData(e.currentTarget);
           await saveBiz({ inventory_policy: f.get("policy"), tip_suggested_pct: Number(f.get("tip")), delivery_enabled: f.get("delivery") === "on", pickup_enabled: f.get("pickup") === "on",
+            qr_ordering_enabled: f.get("qr_ordering") === "on",
             loyalty_enabled: f.get("loyalty") === "on", loyalty_points_per_1000: Number(f.get("points")),
             loyalty_point_value: Number(f.get("point_value")), loyalty_min_redeem: Number(f.get("min_redeem")) });
           const g = units.find((u) => u.kind === "gastronomy"), s = units.find((u) => u.kind === "shop");
@@ -109,6 +110,10 @@ export default function SettingsPage() {
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="delivery" defaultChecked={!!biz.delivery_enabled} /> Recibir pedidos a domicilio</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pickup" defaultChecked={!!biz.pickup_enabled} /> Permitir recoger en el local</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="loyalty" defaultChecked={!!biz.loyalty_enabled} /> Activar programa de fidelización (puntos)</label>
+          <div className="sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="qr_ordering" defaultChecked={biz.qr_ordering_enabled !== false} /> Permitir que los clientes pidan desde el menú QR de la mesa</label>
+            <p className="mt-1 ml-6 text-xs text-charcoal/50">Si lo desmarca, el QR queda solo para ver el menú y llamar al mesero; el mesero toma el pedido desde Modo mesero.</p>
+          </div>
           <div className="sm:col-span-2"><button className="btn-primary">Guardar</button></div>
         </form>
       )}
